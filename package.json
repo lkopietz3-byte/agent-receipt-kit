@@ -1,0 +1,40 @@
+{
+  "name": "agent-receipt-kit",
+  "version": "0.1.0",
+  "description": "Verify what an AI agent claims it did against what it was actually authorized to do, and against a fresher independent observation if you have one. Zero-dependency, framework-agnostic TypeScript.",
+  "keywords": [
+    "agent",
+    "ai-agent",
+    "agent-observability",
+    "agent-trust",
+    "verification",
+    "receipt",
+    "authorization",
+    "audit-trail"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.0"
+  }
+}

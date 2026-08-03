@@ -1,7 +1,7 @@
 {
   "name": "agent-receipt-kit",
   "version": "0.1.0",
-  "description": "Verify what an AI agent claims it did against what it was actually authorized to do, and against a fresher independent observation if you have one. Zero-dependency, framework-agnostic TypeScript.",
+  "description": "Verify AI agent claims against issued authority and independent state, then bind JSON evidence records to deterministic canonical SHA-256 envelopes. Zero-dependency, framework-agnostic TypeScript.",
   "keywords": [
     "agent",
     "ai-agent",
@@ -10,7 +10,11 @@
     "verification",
     "receipt",
     "authorization",
-    "audit-trail"
+    "audit-trail",
+    "evidence-packet",
+    "canonical-json",
+    "sha256",
+    "integrity"
   ],
   "license": "MIT",
   "type": "module",
@@ -24,6 +28,7 @@
   },
   "files": [
     "dist",
+    "docs",
     "README.md",
     "LICENSE"
   ],
@@ -31,7 +36,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "check": "npm run typecheck && npm test && npm run build"
   },
   "devDependencies": {
     "typescript": "^5.6.0",

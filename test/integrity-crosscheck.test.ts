@@ -28,18 +28,21 @@ async function nativeSha256(value: string): Promise<string> {
 function deterministicText(length: number): string {
   let state = 0x6d2b79f5
   const pieces: string[] = []
+  // Keep this boundary-length generator to complete UTF-16 code units so its
+  // final slice cannot create an invalid half of a surrogate pair. Astral
+  // Unicode receives separate intact fixtures below.
   const alphabet = [
-    'a', 'Z', '0', '-', '_', ' ', '\n', 'é', '€', '東京', '🔎', '𝄞',
+    'a', 'Z', '0', '-', '_', ' ', '\n', 'é', '€', '東', '京',
   ]
 
-  while (pieces.join('').length < length) {
+  while (pieces.length < length) {
     state = Math.imul(state ^ (state >>> 15), state | 1)
     state ^= state + Math.imul(state ^ (state >>> 7), state | 61)
     const index = ((state ^ (state >>> 14)) >>> 0) % alphabet.length
     pieces.push(alphabet[index]!)
   }
 
-  return pieces.join('').slice(0, length)
+  return pieces.join('')
 }
 
 describe('SHA-256 cross-check', () => {
@@ -52,6 +55,17 @@ describe('SHA-256 cross-check', () => {
     for (const length of lengths) {
       const value = deterministicText(length)
       expect(sha256Hex(value), `length ${length}`).toBe(await nativeSha256(value))
+    }
+
+    for (const value of [
+      '🔎',
+      '𝄞',
+      'ProofPrism 🔎',
+      '東京からOmahaへ',
+      'é and é are not the same code-point sequence',
+      '🔎'.repeat(2048),
+    ]) {
+      expect(sha256Hex(value), value.slice(0, 30)).toBe(await nativeSha256(value))
     }
   })
 

@@ -1,9 +1,28 @@
-import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
-import { canonicalizeJson, sha256Hex } from '../src/integrity.js'
+import { canonicalizeJson, sha256Hex, type JsonValue } from '../src/integrity.js'
 
-function nodeSha256(value: string): string {
-  return createHash('sha256').update(value, 'utf8').digest('hex')
+interface NativeCryptoRuntime {
+  crypto?: {
+    subtle?: {
+      digest(algorithm: string, data: Uint8Array): Promise<ArrayBuffer>
+    }
+  }
+  TextEncoder?: new () => {
+    encode(value: string): Uint8Array
+  }
+}
+
+async function nativeSha256(value: string): Promise<string> {
+  const runtime = globalThis as unknown as NativeCryptoRuntime
+  if (!runtime.crypto?.subtle || !runtime.TextEncoder) {
+    throw new Error('The test runtime does not expose WebCrypto and TextEncoder.')
+  }
+
+  const bytes = new runtime.TextEncoder().encode(value)
+  const digest = await runtime.crypto.subtle.digest('SHA-256', bytes)
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')
 }
 
 function deterministicText(length: number): string {
@@ -24,7 +43,7 @@ function deterministicText(length: number): string {
 }
 
 describe('SHA-256 cross-check', () => {
-  it('matches Node crypto across block boundaries and Unicode inputs', () => {
+  it('matches native WebCrypto across block boundaries and Unicode inputs', async () => {
     const lengths = [
       0, 1, 2, 3, 7, 31, 55, 56, 57, 63, 64, 65, 127, 128, 129,
       255, 256, 257, 1023, 1024, 1025, 8192,
@@ -32,12 +51,12 @@ describe('SHA-256 cross-check', () => {
 
     for (const length of lengths) {
       const value = deterministicText(length)
-      expect(sha256Hex(value), `length ${length}`).toBe(nodeSha256(value))
+      expect(sha256Hex(value), `length ${length}`).toBe(await nativeSha256(value))
     }
   })
 
-  it('matches Node crypto for canonical evidence documents', () => {
-    const documents = [
+  it('matches native WebCrypto for canonical evidence documents', async () => {
+    const documents: JsonValue[] = [
       { decision: 'RELEASE', dimensions: ['truth', 'time'], facts: { value: 0 } },
       {
         decision: 'REQUIRE_APPROVAL',
@@ -48,11 +67,11 @@ describe('SHA-256 cross-check', () => {
         stringEdges: ['é', 'é', '€', '東京', '🔎', '\u000f', '\n', '"', '\\'],
         nested: { z: null, a: [true, false, 1e30, 1e-27] },
       },
-    ] as const
+    ]
 
     for (const document of documents) {
       const canonical = canonicalizeJson(document)
-      expect(sha256Hex(canonical)).toBe(nodeSha256(canonical))
+      expect(sha256Hex(canonical)).toBe(await nativeSha256(canonical))
     }
   })
 })

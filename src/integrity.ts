@@ -357,7 +357,10 @@ function unsignedEnvelope<Payload extends JsonValue>(
 function digestUnsignedEnvelope<Payload extends JsonValue>(
   envelope: UnsignedEvidenceEnvelope<Payload>,
 ): string {
-  return sha256Hex(canonicalizeJson(envelope))
+  // The interface is structurally JSON-shaped but intentionally does not carry
+  // a broad index signature. Runtime canonicalization still validates every
+  // nested value before producing a digest.
+  return sha256Hex(canonicalizeJson(envelope as unknown as JsonValue))
 }
 
 /**

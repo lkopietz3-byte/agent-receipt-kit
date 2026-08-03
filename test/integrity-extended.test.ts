@@ -243,12 +243,16 @@ describe('evidence envelope issuance contract', () => {
 })
 
 describe('evidence envelope verification mutation matrix', () => {
-  type MutableEnvelope = EvidenceEnvelope & {
+  type MutableEnvelope = {
     schemaVersion: string
-    integrity: EvidenceEnvelope['integrity'] & {
+    packetId: string
+    issuedAt: string
+    payload: JsonValue
+    integrity: {
       mode: string
       canonicalization: string
       digestAlgorithm: string
+      packetDigest: string
     }
   }
 

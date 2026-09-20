@@ -41,13 +41,21 @@ overwrite the claim or the claim silently win by default.
 - [`src/trail.ts`](src/trail.ts) retains rejected claims instead of dropping
   the disagreement.
 - [`test/receipt.test.ts`](test/receipt.test.ts) covers the accepted,
-  unauthorized, stale, and contradictory paths.
+  unauthorized, mismatched-packet, and contradictory paths.
+
+Further work is in [the evidence-envelope pull request](https://github.com/lkopietz3-byte/agent-receipt-kit/pull/1):
+canonical JSON, digest verification, and tampering checks. It is a separate,
+unmerged extension; the default branch below contains the receipt contract.
 
 ## Install
 
 ```bash
-npm install agent-receipt-kit
+npm install github:lkopietz3-byte/agent-receipt-kit
 ```
+
+Git installation builds the package through its `prepare` script. To inspect
+the source first, clone this repository and run the commands above. Use a
+reviewed commit reference when you need a repeatable dependency.
 
 ## API
 
@@ -206,6 +214,15 @@ upstream of `verifyReceipt`.
 
 ## Honest limits
 
+- **`accepted` means the supplied checks found no mismatch.** Observations are
+  optional, and facts missing from `currentState` are not compared. An accepted
+  receipt can therefore contain facts that were never independently checked.
+  Scope and authority labels are caller-defined metadata; the function checks
+  the explicit action and evidence lists, not the meaning of those labels.
+- **Validate at your application boundary.** The API expects typed,
+  JSON-shaped inputs. It does not validate arbitrary request bodies or check
+  observation timestamps. The in-memory trail holds object references; it is
+  not immutable storage or a tamper-evident audit log.
 - **This is a verification framework, not a sandbox.** It does not stop an
   agent from taking an unauthorized action in the first place. It stops an
   agent's unverified claim about what it did from being silently trusted

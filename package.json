@@ -1,7 +1,7 @@
 {
   "name": "agent-receipt-kit",
   "version": "0.1.0",
-  "description": "Verify what an AI agent claims it did against what it was actually authorized to do, and against a fresher independent observation if you have one. Zero-dependency, framework-agnostic TypeScript.",
+  "description": "A dependency-free TypeScript contract for checking an AI agent's claimed work against its authorization and independent evidence.",
   "keywords": [
     "agent",
     "ai-agent",
@@ -13,6 +13,14 @@
     "audit-trail"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lkopietz3-byte/agent-receipt-kit.git"
+  },
+  "homepage": "https://github.com/lkopietz3-byte/agent-receipt-kit#readme",
+  "bugs": {
+    "url": "https://github.com/lkopietz3-byte/agent-receipt-kit/issues"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -29,6 +37,7 @@
   ],
   "sideEffects": false,
   "scripts": {
+    "prepare": "npm run build",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

@@ -1,25 +1,25 @@
-# agent-receipt-kit
+# Agent Receipt Kit
 
-Verify what an AI agent claims it did against what it was actually authorized
-to do, and, when you have one, against a fresher independent observation.
-Zero runtime dependencies. Framework-agnostic TypeScript. Works with any
-system that delegates work to an agent: a coding agent, a browser-automation
-agent, a data-processing pipeline, a customer-service bot, anything that acts
-and then reports back.
+Agent Receipt Kit is a small, dependency-free TypeScript library for checking
+an AI agent's claimed work against the authorization it received and, when one
+exists, a fresher independent observation. It is framework-agnostic: the same
+contract can sit behind a coding agent, browser automation, a data pipeline, or
+a customer-service workflow.
 
-## Why this exists right now
+## Start here
 
-Agentic AI, coding agents, computer-use agents, autonomous workflows, is
-spreading fast, and "agent observability" and "agent trust" are real,
-currently funded categories for exactly the reason you'd expect: an agent
-that can act on its own can also misreport what it did, whether from a bug,
-a hallucination, a stale read of the world, or a prompt injection it picked
-up along the way. This library rides that wave honestly. It is not a claim
-of being first to notice the problem; it is a small, sharp piece of the
-answer, extracted from a system that was already running this pattern in
-production before "agent trust" was a category name.
+```bash
+npm ci
+npm test
+npm run typecheck
+npm run build
+```
 
-## The core insight
+These commands exercise the contract, its type surface, and the emitted
+package. The library is source-available under the MIT license; it is not
+published to npm.
+
+## The core idea
 
 **An agent's own claim about what it did is not evidence that it did it.**
 A "done" message is not a receipt. Verifying a claim requires two separate
@@ -32,6 +32,16 @@ unauthorized claims are flagged instead of accepted, invented evidence is
 named instead of dropped quietly, and a contradiction between a claim and
 current reality is surfaced instead of letting the newer data silently
 overwrite the claim or the claim silently win by default.
+
+## What to review
+
+- [`src/packet.ts`](src/packet.ts) issues the bounded work packet.
+- [`src/receipt.ts`](src/receipt.ts) evaluates the agent's claim against that
+  packet and an optional independent observation.
+- [`src/trail.ts`](src/trail.ts) retains rejected claims instead of dropping
+  the disagreement.
+- [`test/receipt.test.ts`](test/receipt.test.ts) covers the accepted,
+  unauthorized, stale, and contradictory paths.
 
 ## Install
 

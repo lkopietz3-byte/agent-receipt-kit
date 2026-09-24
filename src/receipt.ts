@@ -1,32 +1,47 @@
 import type { AgentClaim, Contradiction, CurrentState, ReceiptResult, WorkPacket } from './types.js'
 
+const hasOwn = (target: object, key: PropertyKey): boolean =>
+  Object.prototype.hasOwnProperty.call(target, key)
+
+function isPlainObject(value: object): boolean {
+  const prototype: unknown = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
+}
+
 /**
- * Structural equality with zero dependencies. Good enough for comparing
- * claimed facts (strings, numbers, booleans, plain objects, arrays) against
- * a fresher current-state observation. Not a general-purpose deep-equal
- * library: it does not special-case Map, Set, Date, or circular references,
- * because agent claims and observations are expected to be plain JSON-shaped
- * data.
+ * Structural equality with zero dependencies, for comparing a claimed fact
+ * with the same-keyed fact in a fresher current-state observation.
+ *
+ * Only JSON-shaped values are compared by content: primitives, arrays
+ * (element by element, where a hole only matches a hole) and plain or
+ * null-prototype objects (own enumerable string keys, any order). Dates are
+ * compared by time value. Any other object (Map, Set, RegExp, Error, typed
+ * arrays, class instances) matches only itself, so a difference this
+ * function cannot see is reported as a contradiction instead of being
+ * silently accepted. Circular structures are not supported and overflow the
+ * stack (a thrown RangeError, never an acceptance).
  */
 function factsMatch(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) return true
-  if (typeof a !== typeof b) return false
-  if (a === null || b === null) return a === b
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false
   if (Array.isArray(a) || Array.isArray(b)) {
-    if (!Array.isArray(a) || !Array.isArray(b)) return false
-    if (a.length !== b.length) return false
-    return a.every((item, index) => factsMatch(item, b[index]))
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false
+    for (let index = 0; index < a.length; index += 1) {
+      const present = hasOwn(a, index)
+      if (present !== hasOwn(b, index)) return false
+      if (present && !factsMatch(a[index], b[index])) return false
+    }
+    return true
   }
-  if (typeof a === 'object' && typeof b === 'object') {
-    const aKeys = Object.keys(a)
-    const bKeys = Object.keys(b)
-    if (aKeys.length !== bKeys.length) return false
-    return aKeys.every((key) =>
-      Object.prototype.hasOwnProperty.call(b, key) &&
-      factsMatch((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]),
-    )
+  if (a instanceof Date || b instanceof Date) {
+    return a instanceof Date && b instanceof Date && Object.is(a.getTime(), b.getTime())
   }
-  return false
+  if (!isPlainObject(a) || !isPlainObject(b)) return false
+  const aRecord = a as Record<string, unknown>
+  const bRecord = b as Record<string, unknown>
+  const aKeys = Object.keys(aRecord)
+  if (aKeys.length !== Object.keys(bRecord).length) return false
+  return aKeys.every((key) => hasOwn(bRecord, key) && factsMatch(aRecord[key], bRecord[key]))
 }
 
 /**

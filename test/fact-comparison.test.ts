@@ -43,6 +43,18 @@ describe('fact comparison: JSON-shaped values', () => {
     expectMatch({}, {})
   })
 
+  it('treats 0 and -0 as the same number, since JSON cannot tell them apart', () => {
+    expectMatch(0, -0)
+    expectMatch(-0, 0)
+    expectMatch({ balance: [-0] }, { balance: [0] })
+  })
+
+  it('treats NaN as matching NaN, and nothing else', () => {
+    expectMatch(Number.NaN, Number.NaN)
+    expectContradiction(Number.NaN, 0)
+    expectContradiction(Number.NaN, null)
+  })
+
   it('treats a null-prototype object like a plain object', () => {
     const current = Object.assign(Object.create(null) as Record<string, unknown>, { a: 1 })
     expectMatch({ a: 1 }, current)

@@ -12,17 +12,19 @@ function isPlainObject(value: object): boolean {
  * Structural equality with zero dependencies, for comparing a claimed fact
  * with the same-keyed fact in a fresher current-state observation.
  *
- * Only JSON-shaped values are compared by content: primitives, arrays
- * (element by element, where a hole only matches a hole) and plain or
- * null-prototype objects (own enumerable string keys, any order). Dates are
- * compared by time value. Any other object (Map, Set, RegExp, Error, typed
+ * Only JSON-shaped values are compared by content: primitives (0 equals -0,
+ * NaN equals NaN), arrays (element by element, where a hole only matches a
+ * hole) and plain or null-prototype objects (own enumerable string keys, any
+ * order). Dates are compared by time value. Any other object (Map, Set, RegExp, Error, typed
  * arrays, class instances) matches only itself, so a difference this
  * function cannot see is reported as a contradiction instead of being
  * silently accepted. Circular structures are not supported and overflow the
  * stack (a thrown RangeError, never an acceptance).
  */
 function factsMatch(a: unknown, b: unknown): boolean {
-  if (Object.is(a, b)) return true
+  // `===` makes 0 and -0 equal (JSON serializes both as 0); Object.is makes
+  // NaN equal to NaN.
+  if (a === b || Object.is(a, b)) return true
   if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false
   if (Array.isArray(a) || Array.isArray(b)) {
     if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false

@@ -47,6 +47,26 @@ function factsMatch(a: unknown, b: unknown): boolean {
 }
 
 /**
+ * Formats an untrusted id or key for the human-readable `reason`. JSON
+ * quoting escapes quotes, backslashes and C0 control characters (including
+ * \n and \r); the extra replace escapes DEL, C1 controls (including U+0085)
+ * and U+2028/U+2029, which some log viewers also treat as line breaks. This
+ * keeps an agent-supplied string from forging extra log lines or blurring
+ * where one id ends and the next begins.
+ */
+function quote(value: unknown): string {
+  if (typeof value !== 'string') return `<${typeof value}>`
+  return JSON.stringify(value).replace(
+    /[\u007f-\u009f\u2028\u2029]/g,
+    (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`,
+  )
+}
+
+function quoteAll(values: readonly unknown[]): string {
+  return values.map(quote).join(', ')
+}
+
+/**
  * The core function. Verifies an AgentClaim against the WorkPacket that was
  * actually issued, and optionally against a fresher currentState.
  *
@@ -100,16 +120,16 @@ export function verifyReceipt<Scope = unknown, Authority = unknown, Fact = unkno
 
   const reasons: string[] = []
   if (packetMismatch) {
-    reasons.push(`Claim answers packet "${claim.packetId}", not the packet under review ("${packet.id}").`)
+    reasons.push(`Claim answers packet ${quote(claim.packetId)}, not the packet under review (${quote(packet.id)}).`)
   }
   if (unauthorizedActions.length) {
-    reasons.push(`${unauthorizedActions.length} claimed action(s) were never authorized: ${unauthorizedActions.join(', ')}.`)
+    reasons.push(`${unauthorizedActions.length} claimed action(s) were never authorized: ${quoteAll(unauthorizedActions)}.`)
   }
   if (droppedEvidenceIds.length) {
-    reasons.push(`${droppedEvidenceIds.length} cited evidence id(s) were not part of the issued packet: ${droppedEvidenceIds.join(', ')}.`)
+    reasons.push(`${droppedEvidenceIds.length} cited evidence id(s) were not part of the issued packet: ${quoteAll(droppedEvidenceIds)}.`)
   }
   if (contradictions.length) {
-    reasons.push(`${contradictions.length} claimed fact(s) contradict the supplied current state: ${contradictions.map((item) => item.key).join(', ')}.`)
+    reasons.push(`${contradictions.length} claimed fact(s) contradict the supplied current state: ${quoteAll(contradictions.map((item) => item.key))}.`)
   }
 
   return {

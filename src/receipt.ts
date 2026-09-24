@@ -18,8 +18,8 @@ function factsMatch(a: unknown, b: unknown): boolean {
     return a.every((item, index) => factsMatch(item, b[index]))
   }
   if (typeof a === 'object' && typeof b === 'object') {
-    const aKeys = Object.keys(a as Record<string, unknown>)
-    const bKeys = Object.keys(b as Record<string, unknown>)
+    const aKeys = Object.keys(a)
+    const bKeys = Object.keys(b)
     if (aKeys.length !== bKeys.length) return false
     return aKeys.every((key) =>
       Object.prototype.hasOwnProperty.call(b, key) &&
@@ -66,7 +66,7 @@ export function verifyReceipt<Scope = unknown, Authority = unknown, Fact = unkno
 
   const contradictions: Contradiction<Fact>[] = []
   if (currentState && claim.claimedFacts) {
-    for (const [key, claimedFact] of Object.entries(claim.claimedFacts) as [string, Fact][]) {
+    for (const [key, claimedFact] of Object.entries(claim.claimedFacts)) {
       if (!Object.prototype.hasOwnProperty.call(currentState, key)) continue
       const currentFact = currentState[key] as Fact
       if (!factsMatch(claimedFact, currentFact)) {

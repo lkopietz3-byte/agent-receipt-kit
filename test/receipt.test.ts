@@ -111,16 +111,16 @@ describe('verifyReceipt', () => {
     const claim = baseClaim()
     const currentState = { cartItemCount: 1 }
 
-    const result = verifyReceipt(packet, claim, currentState)
+    const { reason, ...checks } = verifyReceipt(packet, claim, currentState)
 
-    expect(result).toEqual({
+    expect(checks).toEqual({
       accepted: true,
       unauthorizedActions: [],
       droppedEvidenceIds: [],
       contradictions: [],
       packetMismatch: false,
-      reason: expect.stringContaining('matches the issued packet'),
     })
+    expect(reason).toContain('matches the issued packet')
   })
 
   it('rejects a claim answering a different packet id, even if everything else lines up', () => {

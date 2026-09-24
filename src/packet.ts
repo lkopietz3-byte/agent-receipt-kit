@@ -1,4 +1,5 @@
 import type { AuthorityLevel, WorkPacket } from './types.js'
+import { assertStringArray } from './validate.js'
 
 /**
  * Generates a unique packet id with zero runtime dependencies. Prefers the
@@ -42,6 +43,8 @@ export function issuePacket<Scope = unknown, Authority = AuthorityLevel>(
   evidenceIds: string[],
   options: { id?: string; issuedAt?: string } = {},
 ): WorkPacket<Scope, Authority> {
+  assertStringArray(allowedActions, 'allowedActions')
+  assertStringArray(evidenceIds, 'evidenceIds')
   return {
     id: options.id ?? generatePacketId(),
     issuedAt: options.issuedAt ?? new Date().toISOString(),

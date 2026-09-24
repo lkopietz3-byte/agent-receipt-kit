@@ -1,4 +1,5 @@
 import type { AgentClaim, Contradiction, CurrentState, ReceiptResult, WorkPacket } from './types.js'
+import { assertArray } from './validate.js'
 
 const hasOwn = (target: object, key: PropertyKey): boolean =>
   Object.prototype.hasOwnProperty.call(target, key)
@@ -93,6 +94,11 @@ export function verifyReceipt<Scope = unknown, Authority = unknown, Fact = unkno
   claim: AgentClaim<Fact>,
   currentState?: CurrentState<Fact>,
 ): ReceiptResult<Fact> {
+  assertArray(packet.allowedActions, 'packet.allowedActions')
+  assertArray(packet.evidenceIds, 'packet.evidenceIds')
+  assertArray(claim.claimedActions, 'claim.claimedActions')
+  assertArray(claim.citedEvidenceIds, 'claim.citedEvidenceIds')
+
   const packetMismatch = claim.packetId !== packet.id
 
   const allowed = new Set(packet.allowedActions)

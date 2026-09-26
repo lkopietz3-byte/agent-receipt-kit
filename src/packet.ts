@@ -2,10 +2,11 @@ import type { AuthorityLevel, WorkPacket } from './types.js'
 import { assertStringArray } from './validate.js'
 
 /**
- * Generates a unique packet id with zero runtime dependencies. Prefers the
- * platform's crypto.randomUUID when available (Node 19+, all modern
- * browsers); falls back to a timestamp-plus-random id otherwise so this
- * still works in older or non-standard runtimes.
+ * Generates a packet id with zero runtime dependencies. Uses
+ * globalThis.crypto.randomUUID when present (Node 20+, and browsers in
+ * secure contexts). Otherwise falls back to a timestamp plus Math.random,
+ * which is unlikely to collide but is neither guaranteed unique nor
+ * unpredictable; pass options.id if either matters.
  */
 function generatePacketId(): string {
   const cryptoObj = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto
@@ -32,9 +33,17 @@ function generatePacketId(): string {
  * @param evidenceIds Ids of evidence/references the agent may cite in
  *   support of a claim.
  * @param options.id Override the generated packet id (useful for tests or
- *   idempotency keys). Optional.
+ *   idempotency keys). Optional; stored as given.
  * @param options.issuedAt Override the generated issuedAt timestamp.
- *   Optional; defaults to now.
+ *   Optional; defaults to `new Date().toISOString()`. Stored as given, not
+ *   validated.
+ * @returns A new WorkPacket. allowedActions and evidenceIds are shallow
+ *   copies, so later edits to the input arrays do not change the packet;
+ *   scope is stored by reference. The packet itself is a plain mutable
+ *   object.
+ * @throws TypeError if allowedActions or evidenceIds is not an array of
+ *   strings. (A string would otherwise be spread into single characters and
+ *   authorize them.)
  */
 export function issuePacket<Scope = unknown, Authority = AuthorityLevel>(
   scope: Scope,

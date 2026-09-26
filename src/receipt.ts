@@ -106,7 +106,27 @@ function acceptedReason(factCount: number, stateSupplied: boolean, uncheckedKeys
  * 4. Identity: the claim must actually be answering this packet (matching
  *    packetId). A claim for a different packet is never accepted.
  *
- * `accepted` is true only when all four checks come back clean.
+ * `accepted` is true only when all four checks come back clean. All checks
+ * run and report even when an earlier one fails. Action and evidence ids
+ * are matched exactly (no case folding, trimming or Unicode normalization),
+ * and an empty claim is accepted because nothing in it falls outside the
+ * packet. Facts are compared structurally: primitives (0 equals -0, NaN
+ * equals NaN), arrays element by element, plain objects by own keys in any
+ * order, Dates by time value; any other object (Map, Set, class instance)
+ * only matches itself, so the comparison fails closed. The function is
+ * synchronous, reads no clock and does not mutate its inputs.
+ *
+ * @param packet The WorkPacket that was actually issued.
+ * @param claim The agent's report. Treated as untrusted.
+ * @param currentState Optional fresher observation, keyed like
+ *   claim.claimedFacts. Omitted or null means no fact is cross-checked.
+ * @returns A ReceiptResult naming every mismatch; see its field docs.
+ * @throws TypeError if packet.allowedActions, packet.evidenceIds,
+ *   claim.claimedActions or claim.citedEvidenceIds is not an array.
+ *   Non-string entries in the claim lists are reported as unauthorized or
+ *   dropped, not thrown.
+ * @throws RangeError if a claimed fact and its current-state counterpart
+ *   are both circular structures (stack overflow). Never an acceptance.
  */
 export function verifyReceipt<Scope = unknown, Authority = unknown, Fact = unknown>(
   packet: WorkPacket<Scope, Authority>,

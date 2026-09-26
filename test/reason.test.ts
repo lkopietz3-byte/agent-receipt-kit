@@ -63,6 +63,48 @@ describe('verifyReceipt reason text', () => {
     expect(result.reason).toBe('Claim answers packet <number>, not the packet under review ("pkt-reason").')
   })
 
+  describe('when the claim is accepted', () => {
+    const accepted = { packetId: 'pkt-reason', claimedActions: ['log-in'], citedEvidenceIds: ['screenshot-1'] }
+    const base = "Claim matches the issued packet's authority and evidence and answers the correct packet."
+
+    it('says so when the claim asserts no facts', () => {
+      const result = verifyReceipt(packet, accepted, { loggedIn: true })
+      expect(result.accepted).toBe(true)
+      expect(result.reason).toBe(`${base} The claim asserts no facts, so there was nothing to cross-check.`)
+    })
+
+    it('does not imply a cross-check when no current state was supplied', () => {
+      const result = verifyReceipt(packet, { ...accepted, claimedFacts: { loggedIn: true, cartItemCount: 1 } })
+      expect(result.accepted).toBe(true)
+      expect(result.reason).toBe(`${base} No current state was supplied, so its 2 claimed fact(s) were not cross-checked.`)
+      expect(result.reason).not.toContain('supplied current state')
+    })
+
+    it('treats a null current state (possible from JavaScript or JSON) as not supplied', () => {
+      const result = verifyReceipt(packet, { ...accepted, claimedFacts: { loggedIn: true } }, null as unknown as undefined)
+      expect(result.accepted).toBe(true)
+      expect(result.reason).toContain('No current state was supplied')
+    })
+
+    it('counts the facts that were checked and names the ones that were not', () => {
+      const result = verifyReceipt(
+        packet,
+        { ...accepted, claimedFacts: { loggedIn: true, cartItemCount: 1, 'coupon\nApplied': 'yes' } },
+        { loggedIn: true },
+      )
+      expect(result.accepted).toBe(true)
+      expect(result.reason).toBe(
+        `${base} 1 claimed fact(s) agree with the supplied current state. ` +
+          '2 claimed fact(s) were not checked because the current state has no value for them: "cartItemCount", "coupon\\nApplied".',
+      )
+    })
+
+    it('reports a full cross-check without an unchecked list', () => {
+      const result = verifyReceipt(packet, { ...accepted, claimedFacts: { loggedIn: true } }, { loggedIn: true, extra: 1 })
+      expect(result.reason).toBe(`${base} 1 claimed fact(s) agree with the supplied current state.`)
+    })
+  })
+
   it('lists every failed check, in a fixed order', () => {
     const result = verifyReceipt(
       packet,

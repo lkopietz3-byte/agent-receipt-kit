@@ -68,6 +68,25 @@ function quoteAll(values: readonly unknown[]): string {
 }
 
 /**
+ * The reason for an accepted claim. It says how many claimed facts were
+ * actually cross-checked, so an accepted receipt never reads as more
+ * verified than it was.
+ */
+function acceptedReason(factCount: number, stateSupplied: boolean, uncheckedKeys: readonly string[]): string {
+  const base = "Claim matches the issued packet's authority and evidence and answers the correct packet."
+  if (factCount === 0) return `${base} The claim asserts no facts, so there was nothing to cross-check.`
+  if (!stateSupplied) {
+    return `${base} No current state was supplied, so its ${factCount} claimed fact(s) were not cross-checked.`
+  }
+  const checked = factCount - uncheckedKeys.length
+  let text = `${base} ${checked} claimed fact(s) agree with the supplied current state.`
+  if (uncheckedKeys.length) {
+    text += ` ${uncheckedKeys.length} claimed fact(s) were not checked because the current state has no value for them: ${quoteAll(uncheckedKeys)}.`
+  }
+  return text
+}
+
+/**
  * The core function. Verifies an AgentClaim against the WorkPacket that was
  * actually issued, and optionally against a fresher currentState.
  *
@@ -108,9 +127,15 @@ export function verifyReceipt<Scope = unknown, Authority = unknown, Fact = unkno
   const droppedEvidenceIds = claim.citedEvidenceIds.filter((id) => !issuedEvidence.has(id))
 
   const contradictions: Contradiction<Fact>[] = []
-  if (currentState && claim.claimedFacts) {
-    for (const [key, claimedFact] of Object.entries(claim.claimedFacts)) {
-      if (!Object.prototype.hasOwnProperty.call(currentState, key)) continue
+  const claimedFactEntries = claim.claimedFacts ? Object.entries(claim.claimedFacts) : []
+  const uncheckedFactKeys: string[] = []
+  const stateSupplied = currentState !== undefined && currentState !== null
+  if (stateSupplied) {
+    for (const [key, claimedFact] of claimedFactEntries) {
+      if (!hasOwn(currentState, key)) {
+        uncheckedFactKeys.push(key)
+        continue
+      }
       const currentFact = currentState[key] as Fact
       if (!factsMatch(claimedFact, currentFact)) {
         contradictions.push({ key, claimedFact, currentFact })
@@ -145,7 +170,7 @@ export function verifyReceipt<Scope = unknown, Authority = unknown, Fact = unkno
     contradictions,
     packetMismatch,
     reason: accepted
-      ? 'Claim matches the issued packet\'s authority and evidence, answers the correct packet, and no contradiction was found against the supplied current state.'
+      ? acceptedReason(claimedFactEntries.length, stateSupplied, uncheckedFactKeys)
       : reasons.join(' '),
   }
 }

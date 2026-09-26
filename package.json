@@ -1,16 +1,17 @@
 {
   "name": "agent-receipt-kit",
   "version": "0.1.0",
-  "description": "A dependency-free TypeScript contract for checking an AI agent's claimed work against its authorization and independent evidence.",
+  "description": "Dependency-free TypeScript checks that compare an AI agent's report with the actions and evidence ids it was issued and with a caller-supplied observation.",
   "keywords": [
-    "agent",
     "ai-agent",
-    "agent-observability",
-    "agent-trust",
+    "agent",
     "verification",
-    "receipt",
     "authorization",
-    "audit-trail"
+    "allowlist",
+    "evidence",
+    "receipt",
+    "typescript",
+    "zero-dependency"
   ],
   "author": "Lucas Kopietz",
   "license": "MIT",

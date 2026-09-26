@@ -197,3 +197,80 @@ describe('createRefutationTrail', () => {
     expect((trail as unknown as Record<string, unknown>).delete).toBeUndefined()
   })
 })
+
+describe('verifyReceipt edge cases', () => {
+  const packet = issuePacket({}, 'local', ['log-in', 'add-to-cart'], ['screenshot-1'], {
+    id: 'pkt-edges',
+    issuedAt: '2026-09-24T00:00:00.000Z',
+  })
+  const claim = (overrides: Partial<AgentClaim> = {}): AgentClaim => ({
+    packetId: 'pkt-edges',
+    claimedActions: ['log-in'],
+    citedEvidenceIds: ['screenshot-1'],
+    ...overrides,
+  })
+
+  it('accepts an empty claim, because nothing in it falls outside the packet', () => {
+    const result = verifyReceipt(packet, claim({ claimedActions: [], citedEvidenceIds: [] }))
+    expect(result.accepted).toBe(true)
+  })
+
+  it('matches ids exactly: no case folding, trimming or Unicode normalization', () => {
+    const decomposed = 'log-i\u006e\u0303' // "log-in" plus a combining tilde (U+0303)
+    const result = verifyReceipt(packet, claim({ claimedActions: ['Log-In', 'log-in ', decomposed] }))
+    expect(result.unauthorizedActions).toEqual(['Log-In', 'log-in ', decomposed])
+    expect(result.accepted).toBe(false)
+  })
+
+  it('reports each repeated unauthorized entry as given', () => {
+    const result = verifyReceipt(packet, claim({ claimedActions: ['wipe', 'wipe'], citedEvidenceIds: ['x', 'x'] }))
+    expect(result.unauthorizedActions).toEqual(['wipe', 'wipe'])
+    expect(result.droppedEvidenceIds).toEqual(['x', 'x'])
+  })
+
+  it('skips claimed facts the current state does not cover, and ignores extra current-state keys', () => {
+    const result = verifyReceipt(
+      packet,
+      claim({ claimedFacts: { checked: 1, unchecked: 'anything' } }),
+      { checked: 1, unrelated: false },
+    )
+    expect(result.contradictions).toEqual([])
+    expect(result.accepted).toBe(true)
+  })
+
+  it('does not treat inherited properties such as toString as present in the current state', () => {
+    const result = verifyReceipt(packet, claim({ claimedFacts: { toString: 'x', constructor: 'y' } }), {})
+    expect(result.contradictions).toEqual([])
+  })
+
+  it('compares an own __proto__ key from parsed JSON like any other key', () => {
+    const claimedFacts = JSON.parse('{"__proto__": {"admin": true}}') as Record<string, unknown>
+    const currentState = JSON.parse('{"__proto__": {"admin": false}}') as Record<string, unknown>
+    const result = verifyReceipt(packet, claim({ claimedFacts }), currentState)
+    expect(result.contradictions).toHaveLength(1)
+    expect(result.contradictions[0]?.key).toBe('__proto__')
+    expect(result.accepted).toBe(false)
+  })
+
+  it('throws, rather than accepting, when a fact is circular', () => {
+    const cyclicClaim: Record<string, unknown> = {}
+    cyclicClaim.self = cyclicClaim
+    const cyclicState: Record<string, unknown> = {}
+    cyclicState.self = cyclicState
+    expect(() => verifyReceipt(packet, claim({ claimedFacts: { loop: cyclicClaim } }), { loop: cyclicState })).toThrow(RangeError)
+  })
+
+  it('does not mutate the packet, claim or current state', () => {
+    const input = claim({ claimedActions: ['log-in', 'wipe'], claimedFacts: { n: 1 } })
+    const state = { n: 2 }
+    const snapshot = JSON.stringify([packet, input, state])
+    verifyReceipt(packet, input, state)
+    expect(JSON.stringify([packet, input, state])).toBe(snapshot)
+  })
+
+  it('reports a packet mismatch together with the other failures, not instead of them', () => {
+    const result = verifyReceipt(packet, claim({ packetId: 'other', claimedActions: ['wipe'] }))
+    expect(result.packetMismatch).toBe(true)
+    expect(result.unauthorizedActions).toEqual(['wipe'])
+  })
+})

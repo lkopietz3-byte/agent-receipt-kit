@@ -1,0 +1,7 @@
+{
+  "agent-receipt-kit": [
+    "createRefutationTrail",
+    "issuePacket",
+    "verifyReceipt"
+  ]
+}

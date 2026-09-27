@@ -43,9 +43,9 @@ code.
 
 ## Release and rollback
 
-- Not published to npm. Consumers install from GitHub, which runs `prepare`
-  (`npm run build`). Tell consumers to pin a commit sha.
+- `npm run verify` (lint, typecheck, test, build, verify:package) runs
+  automatically before publish via the `prepublishOnly` script.
 - To release: update `CHANGELOG.md`, bump `version`, run `npm run verify`,
-  tag the commit.
-- To roll back: consumers re-pin the previous commit or tag. Nothing is
-  cached server-side, so there is nothing else to undo.
+  tag the commit, then `npm publish`.
+- To roll back: npm allows `npm unpublish` only within 72 hours of
+  publishing. After that window, publish a fixed patch version instead.

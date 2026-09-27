@@ -4,9 +4,32 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.1.1] - 2026-09-27
+
+### Fixed
+
+- `verifyReceipt(null, claim)` (or a non-object `claim`, e.g.
+  `verifyReceipt(packet, 123)`) threw a raw native "Cannot read properties of
+  null" error instead of this kit's own named `TypeError`. Both `packet` and
+  `claim` are now checked up front.
+- The shipped `.js.map` pointed at `../src/*.ts`, which isn't in the
+  published tarball. `tsconfig.build.json` now sets `inlineSources`, so the
+  map embeds the original source. `.d.ts.map` generation is turned off
+  instead of shipping `src/`.
+
+### Added
+
+- CommonJS `require()` support: `package.json` `exports` now has a
+  `"default"` condition alongside `"import"`, so
+  `require("agent-receipt-kit")` works on Node versions that support
+  `require(esm)` (>=20.19.0, >=22.12.0). `scripts/consumer-probe.cjs`, run by
+  `verify-package.mjs`, guards it in CI.
+- A "Relationship to sibling kits" section in the README, cross-linking
+  `audit-chain-kit` for durable, tamper-evident storage of rejected claims.
+
 ## [0.1.0] - 2026-09-27
 
-First release. Not published to npm; install from GitHub.
+First release.
 
 ### Added
 

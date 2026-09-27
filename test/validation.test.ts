@@ -67,6 +67,28 @@ describe('verifyReceipt input checks', () => {
     expect(() => verifyReceipt(brokenEvidence, claim)).toThrow(new TypeError('packet.evidenceIds must be an array (got object).'))
   })
 
+  it('throws this kit\'s own TypeError for a null/undefined/wrong-type packet or claim, not a raw property-access crash', () => {
+    // Before the fix, verifyReceipt(null, claim) threw a native
+    // "Cannot read properties of null (reading 'allowedActions')" —
+    // technically a TypeError, but not one this kit names or documents, and
+    // not matchable by message the way every other validation error is.
+    expect(() => verifyReceipt(null as unknown as WorkPacket, claim)).toThrow(
+      new TypeError('packet must be an object (got null).'),
+    )
+    expect(() => verifyReceipt(undefined as unknown as WorkPacket, claim)).toThrow(
+      new TypeError('packet must be an object (got undefined).'),
+    )
+    expect(() => verifyReceipt('not-a-packet' as unknown as WorkPacket, claim)).toThrow(
+      new TypeError('packet must be an object (got string).'),
+    )
+    expect(() => verifyReceipt(packet, null as unknown as AgentClaim)).toThrow(
+      new TypeError('claim must be an object (got null).'),
+    )
+    expect(() => verifyReceipt(packet, 123 as unknown as AgentClaim)).toThrow(
+      new TypeError('claim must be an object (got number).'),
+    )
+  })
+
   it('treats a non-string entry in a claim as unauthorized rather than throwing', () => {
     const result = verifyReceipt(packet, {
       ...claim,

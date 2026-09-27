@@ -1,5 +1,5 @@
 import type { AgentClaim, Contradiction, CurrentState, ReceiptResult, WorkPacket } from './types.js'
-import { assertArray } from './validate.js'
+import { assertArray, assertObject } from './validate.js'
 
 const hasOwn = (target: object, key: PropertyKey): boolean =>
   Object.prototype.hasOwnProperty.call(target, key)
@@ -121,10 +121,11 @@ function acceptedReason(factCount: number, stateSupplied: boolean, uncheckedKeys
  * @param currentState Optional fresher observation, keyed like
  *   claim.claimedFacts. Omitted or null means no fact is cross-checked.
  * @returns A ReceiptResult naming every mismatch; see its field docs.
- * @throws TypeError if packet.allowedActions, packet.evidenceIds,
- *   claim.claimedActions or claim.citedEvidenceIds is not an array.
- *   Non-string entries in the claim lists are reported as unauthorized or
- *   dropped, not thrown.
+ * @throws TypeError if packet or claim is not a non-null object (e.g.
+ *   `null`, `undefined`, a string, or an array), or if
+ *   packet.allowedActions, packet.evidenceIds, claim.claimedActions or
+ *   claim.citedEvidenceIds is not an array. Non-string entries in the claim
+ *   lists are reported as unauthorized or dropped, not thrown.
  * @throws RangeError if a claimed fact and its current-state counterpart
  *   are both circular structures (stack overflow). Never an acceptance.
  */
@@ -133,6 +134,8 @@ export function verifyReceipt<Scope = unknown, Authority = unknown, Fact = unkno
   claim: AgentClaim<Fact>,
   currentState?: CurrentState<Fact>,
 ): ReceiptResult<Fact> {
+  assertObject(packet, 'packet')
+  assertObject(claim, 'claim')
   assertArray(packet.allowedActions, 'packet.allowedActions')
   assertArray(packet.evidenceIds, 'packet.evidenceIds')
   assertArray(claim.claimedActions, 'claim.claimedActions')

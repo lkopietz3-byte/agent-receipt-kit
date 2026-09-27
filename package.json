@@ -1,6 +1,6 @@
 {
   "name": "agent-receipt-kit",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Dependency-free TypeScript checks that compare an AI agent's report with the actions and evidence ids it was issued and with a caller-supplied observation.",
   "keywords": [
     "ai-agent",
@@ -29,7 +29,8 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     }
   },
   "sideEffects": false,
@@ -44,7 +45,7 @@
   },
   "scripts": {
     "prepare": "npm run build",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "lint": "eslint . --max-warnings=0",

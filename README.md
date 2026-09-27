@@ -36,7 +36,9 @@ npm install agent-receipt-kit
 Or build from source: clone the repository and run `npm install && npm run build`.
 
 Requirements: Node.js 20 or newer (CI is set up to test Node 20, 22, and 24).
-The package is ESM only, with TypeScript declarations included.
+The package is ESM, with TypeScript declarations included; CommonJS
+`require("agent-receipt-kit")` also works on Node versions that support
+`require(esm)` (>=20.19.0, >=22.12.0).
 
 ## Quickstart
 
@@ -301,10 +303,23 @@ example `'observe' | 'draft' | 'sandbox' | 'production'`).
 - **No integrity or authenticity.** Packets and claims are not signed or
   hashed. Store packets somewhere the agent cannot edit them.
 - **The trail is in memory and holds references.** It is not durable,
-  immutable, or tamper-evident. For a tamper-evident record, copy entries into
-  an append-only, hash-chained log or other storage that provides that.
+  immutable, or tamper-evident. For a tamper-evident record, append entries to
+  [`audit-chain-kit`](https://github.com/lkopietz3-byte/audit-chain-kit) (or
+  another append-only, hash-chained log) — see "Relationship to sibling
+  kits" below.
 - **It is not a sandbox.** It checks the report after the fact and cannot
   prevent an action.
+
+## Relationship to sibling kits
+
+[`audit-chain-kit`](https://github.com/lkopietz3-byte/audit-chain-kit) is a
+tamper-evident, hash-chained append-only log — it doesn't know what a
+"receipt" or a "claim" is, it just chains and verifies opaque entries. This
+kit's `RefutationEntry` (or a whole `ReceiptResult`) is a natural entry to
+append to that chain: `verifyReceipt` decides whether a claim holds up,
+`createRefutationTrail` remembers the rejections in memory for the current
+process, and `audit-chain-kit` gives that record durability and tamper
+evidence across restarts. The two packages share no code.
 
 ## A related concern this library does not handle
 

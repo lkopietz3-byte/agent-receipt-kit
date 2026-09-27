@@ -29,21 +29,11 @@ Do not use it as:
 
 ## Install
 
-This package is not published to npm. Install it from GitHub:
-
 ```bash
-npm install github:lkopietz3-byte/agent-receipt-kit
+npm install agent-receipt-kit
 ```
 
-npm runs the package's `prepare` script, which compiles the TypeScript
-source, so the install needs the dev dependencies to be downloadable. npm 11
-may warn that this `prepare` script is not covered by `allowScripts`; with
-npm 11.16.0 the build still ran. For a repeatable dependency, pin a commit
-you have reviewed:
-
-```bash
-npm install github:lkopietz3-byte/agent-receipt-kit#<commit-sha>
-```
+Or build from source: clone the repository and run `npm install && npm run build`.
 
 Requirements: Node.js 20 or newer (CI is set up to test Node 20, 22, and 24).
 The package is ESM only, with TypeScript declarations included.

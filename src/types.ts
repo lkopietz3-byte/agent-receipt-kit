@@ -121,6 +121,39 @@ export interface Contradiction<Fact = unknown> {
   currentFact: Fact
 }
 
+/**
+ * How much of a claim's facts `verifyReceipt` actually compared. It is present
+ * on every result, accepted or rejected, so a consumer never has to parse
+ * `reason` to tell "no mismatch found" from "every fact was cross-checked".
+ *
+ * `comparedFactCount + uncheckedFactKeys.length === claimedFactCount` always
+ * holds. A compared fact may have agreed or contradicted: the number of
+ * disagreements is `contradictions.length`, so agreements are
+ * `comparedFactCount - contradictions.length`.
+ */
+export interface ReceiptCoverage {
+  /**
+   * True when a currentState object was supplied (`undefined` and `null` mean
+   * none). With no state, every claimed fact is unchecked.
+   */
+  stateSupplied: boolean
+  /** How many facts the claim asserted (own enumerable keys of claimedFacts). */
+  claimedFactCount: number
+  /**
+   * How many claimed facts were compared with a same-keyed value in
+   * currentState. Includes facts that contradicted it. Only an own key of
+   * currentState counts; an inherited one does not.
+   */
+  comparedFactCount: number
+  /**
+   * The claimed fact keys that were not compared, exactly as the claim spelled
+   * them and in the claim's own key order: all of them when no state was
+   * supplied, otherwise the ones currentState has no own key for. A new array
+   * on every call.
+   */
+  uncheckedFactKeys: string[]
+}
+
 /** The structured result of verifying an AgentClaim against a WorkPacket. */
 export interface ReceiptResult<Fact = unknown> {
   /**
@@ -147,6 +180,11 @@ export interface ReceiptResult<Fact = unknown> {
    * review is never accepted, regardless of its other contents.
    */
   packetMismatch: boolean
+  /**
+   * How many claimed facts were compared and which were not. Additive: it does
+   * not change what `accepted` means. See ReceiptCoverage.
+   */
+  coverage: ReceiptCoverage
   /**
    * Human-readable explanation of the decision, for logs. Untrusted ids and
    * keys appear JSON-quoted with line breaks escaped. For an accepted claim

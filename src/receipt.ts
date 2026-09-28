@@ -1,4 +1,4 @@
-import type { AgentClaim, Contradiction, CurrentState, ReceiptResult, WorkPacket } from './types.js'
+import type { AgentClaim, Contradiction, CurrentState, ReceiptCoverage, ReceiptResult, WorkPacket } from './types.js'
 import { assertId, assertObject, assertPlainRecord, isPlainRecord, snapshotStringArray } from './validate.js'
 
 const hasOwn = (target: object, key: PropertyKey): boolean =>
@@ -64,16 +64,16 @@ function quoteAll(values: readonly string[]): string {
  * actually cross-checked, so an accepted receipt never reads as more
  * verified than it was.
  */
-function acceptedReason(factCount: number, stateSupplied: boolean, uncheckedKeys: readonly string[]): string {
+function acceptedReason(coverage: ReceiptCoverage): string {
+  const { stateSupplied, claimedFactCount, comparedFactCount, uncheckedFactKeys } = coverage
   const base = "Claim matches the issued packet's authority and evidence and answers the correct packet."
-  if (factCount === 0) return `${base} The claim asserts no facts, so there was nothing to cross-check.`
+  if (claimedFactCount === 0) return `${base} The claim asserts no facts, so there was nothing to cross-check.`
   if (!stateSupplied) {
-    return `${base} No current state was supplied, so its ${factCount} claimed fact(s) were not cross-checked.`
+    return `${base} No current state was supplied, so its ${claimedFactCount} claimed fact(s) were not cross-checked.`
   }
-  const checked = factCount - uncheckedKeys.length
-  let text = `${base} ${checked} claimed fact(s) agree with the supplied current state.`
-  if (uncheckedKeys.length) {
-    text += ` ${uncheckedKeys.length} claimed fact(s) were not checked because the current state has no value for them: ${quoteAll(uncheckedKeys)}.`
+  let text = `${base} ${comparedFactCount} claimed fact(s) agree with the supplied current state.`
+  if (uncheckedFactKeys.length) {
+    text += ` ${uncheckedFactKeys.length} claimed fact(s) were not checked because the current state has no value for them: ${quoteAll(uncheckedFactKeys)}.`
   }
   return text
 }
@@ -160,17 +160,23 @@ export function verifyReceipt<Scope = unknown, Authority = unknown, Fact = unkno
   const contradictions: Contradiction<Fact>[] = []
   const claimedFactEntries = claimedFacts === undefined ? [] : Object.entries(claimedFacts as Record<string, Fact>)
   const uncheckedFactKeys: string[] = []
-  if (stateSupplied) {
-    for (const [key, claimedFact] of claimedFactEntries) {
-      if (!hasOwn(currentState, key)) {
-        uncheckedFactKeys.push(key)
-        continue
-      }
-      const currentFact = currentState[key] as Fact
-      if (!factsMatch(claimedFact, currentFact)) {
-        contradictions.push({ key, claimedFact, currentFact })
-      }
+  let comparedFactCount = 0
+  for (const [key, claimedFact] of claimedFactEntries) {
+    if (!stateSupplied || !hasOwn(currentState, key)) {
+      uncheckedFactKeys.push(key)
+      continue
     }
+    comparedFactCount += 1
+    const currentFact = currentState[key] as Fact
+    if (!factsMatch(claimedFact, currentFact)) {
+      contradictions.push({ key, claimedFact, currentFact })
+    }
+  }
+  const coverage: ReceiptCoverage = {
+    stateSupplied,
+    claimedFactCount: claimedFactEntries.length,
+    comparedFactCount,
+    uncheckedFactKeys,
   }
 
   const accepted =
@@ -199,8 +205,7 @@ export function verifyReceipt<Scope = unknown, Authority = unknown, Fact = unkno
     droppedEvidenceIds,
     contradictions,
     packetMismatch,
-    reason: accepted
-      ? acceptedReason(claimedFactEntries.length, stateSupplied, uncheckedFactKeys)
-      : reasons.join(' '),
+    coverage,
+    reason: accepted ? acceptedReason(coverage) : reasons.join(' '),
   }
 }

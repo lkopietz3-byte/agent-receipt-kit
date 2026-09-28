@@ -42,7 +42,9 @@ export type AuthorityLevel = 'observe' | 'prepare' | 'local'
 export interface WorkPacket<Scope = unknown, Authority = AuthorityLevel> {
   /**
    * Id a claim must echo in its packetId. issuePacket generates
-   * `pkt-<random UUID>` unless the caller supplies one.
+   * `pkt-<random UUID>` unless the caller supplies one. verifyReceipt
+   * requires a string that shows something (not empty, not only whitespace or
+   * invisible characters) and compares it exactly.
    */
   id: string
   /**
@@ -59,7 +61,9 @@ export interface WorkPacket<Scope = unknown, Authority = AuthorityLevel> {
    * performed. Caller-defined strings (e.g. 'click', 'submit-form',
    * 'write-file', 'send-email', 'transform-rows'), matched exactly (no case
    * folding, trimming or Unicode normalization). An agent claim naming any
-   * action outside this list is flagged, never silently accepted.
+   * action outside this list is flagged, never silently accepted. Must be a
+   * dense array of strings (no holes, no non-strings), or verifyReceipt and
+   * issuePacket throw a TypeError.
    */
   allowedActions: string[]
   /**
@@ -79,20 +83,35 @@ export interface WorkPacket<Scope = unknown, Authority = AuthorityLevel> {
  * observation of current state).
  */
 export interface AgentClaim<Fact = unknown> {
-  /** The id of the WorkPacket this claim responds to. */
+  /**
+   * The id of the WorkPacket this claim responds to. Must be a string that
+   * shows something; a missing, non-string or blank id throws instead of
+   * matching another missing or blank id.
+   */
   packetId: string
-  /** Action identifiers the agent claims to have taken. */
+  /**
+   * Action identifiers the agent claims to have taken. A dense array of
+   * strings (no holes, no non-strings), or verifyReceipt throws a TypeError.
+   */
   claimedActions: string[]
-  /** Evidence/reference ids the agent cites in support of its claim. */
+  /**
+   * Evidence/reference ids the agent cites in support of its claim. A dense
+   * array of strings, like claimedActions.
+   */
   citedEvidenceIds: string[]
   /**
    * Optional key/value facts the agent asserts about the world as a result
    * of its work (e.g. { orderStatus: 'confirmed' }, { rowsUpdated: 42 },
    * { pageUrl: '/checkout/success' }). Each fact whose key also exists in a
    * supplied `currentState` is compared with it; facts without a matching
-   * key are not checked. Keep values JSON-shaped (plain objects, arrays,
-   * primitives); Dates are compared by time value, and any other object only
-   * matches itself.
+   * key are not checked (see ReceiptResult.coverage). When present it must be
+   * a plain or null-prototype object: `null`, an array, a Map, a class
+   * instance or a primitive throws a TypeError, and only `undefined` means
+   * "no facts". Keep values JSON-shaped (plain objects, arrays, primitives);
+   * Dates are compared by time value, and any other object only matches
+   * itself. Two separate circular values, or two separate values nested
+   * deeper than the runtime's stack allows, make verifyReceipt throw a
+   * RangeError.
    */
   claimedFacts?: Record<string, Fact>
   /** Optional free-text summary of what the agent believes it did. Not checked. */
@@ -108,6 +127,9 @@ export interface AgentClaim<Fact = unknown> {
  * the README's limits section.
  *
  * Shape mirrors AgentClaim.claimedFacts: a flat map of fact key to value.
+ * `undefined` or `null` passed as the currentState argument means no
+ * observation; anything else must be a plain or null-prototype object (a Map,
+ * an array or a class instance throws a TypeError). Only its own keys count.
  */
 export type CurrentState<Fact = unknown> = Record<string, Fact>
 
@@ -161,7 +183,8 @@ export interface ReceiptResult<Fact = unknown> {
    * evidence ids, zero contradictions, and the claim's packetId matches the
    * packet under review. It means these checks found no mismatch, not that
    * the claim is true: facts with no matching currentState key, and all
-   * facts when no currentState is supplied, are never compared.
+   * facts when no currentState is supplied, are never compared. `coverage`
+   * says how many were.
    */
   accepted: boolean
   /** Claimed actions that were not in the issued packet's allowedActions. */
@@ -187,7 +210,8 @@ export interface ReceiptResult<Fact = unknown> {
   coverage: ReceiptCoverage
   /**
    * Human-readable explanation of the decision, for logs. Untrusted ids and
-   * keys appear JSON-quoted with line breaks escaped. For an accepted claim
+   * keys appear JSON-quoted with control characters, line breaks and
+   * bidirectional formatting characters escaped as `\uXXXX`. For an accepted claim
    * it says how many claimed facts were actually cross-checked. The wording
    * is not a stable API; branch on the structured fields instead.
    */

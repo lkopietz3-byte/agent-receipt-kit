@@ -35,10 +35,21 @@ npm install agent-receipt-kit
 
 Or build from source: clone the repository and run `npm install && npm run build`.
 
-Requirements: Node.js 20 or newer (CI is set up to test Node 20, 22, and 24).
-The package is ESM, with TypeScript declarations included; CommonJS
-`require("agent-receipt-kit")` also works on Node versions that support
-`require(esm)` (>=20.19.0, >=22.12.0).
+It has no runtime dependencies and ships TypeScript declarations.
+
+It is an ESM package (`"type": "module"`). `import` is the supported way to
+load it. `require()` also works where Node can `require(esm)`:
+
+| How you load it | Node 20.19+ | Node 22.12+ | Node 24 and 26 | Older Node 20 or 22 |
+| --- | --- | --- | --- | --- |
+| `import { verifyReceipt } from 'agent-receipt-kit'` | works | works | works | works |
+| `require('agent-receipt-kit')` | works | works | works | fails (no `require(esm)`); use `import()` |
+
+Recommended runtimes are Node 22 and 24 (LTS) and Node 26 (current). Node 20 is
+end-of-life. CI still runs the tests and the installed-package probes on Node
+20.19.0 and 22.12.0 (the `require(esm)` floors) to catch regressions, but that
+is compatibility testing, not a recommendation. `engines` in `package.json` is
+`>=20`.
 
 ## Quickstart
 
@@ -51,6 +62,7 @@ const packet = issuePacket(
   'local',                          // authority label
   ['log-in', 'add-to-cart'],        // allowed actions
   ['screenshot-1', 'screenshot-2'], // evidence ids the agent may cite
+  { id: 'pkt-demo', issuedAt: '2026-09-28T09:00:00.000Z' }, // pinned so this output is reproducible
 )
 
 // 2. The agent reports back. Treat this as untrusted input.
@@ -58,7 +70,7 @@ const claim = {
   packetId: packet.id,
   claimedActions: ['log-in', 'add-to-cart', 'submit-payment'],
   citedEvidenceIds: ['screenshot-1'],
-  claimedFacts: { cartItemCount: 1 },
+  claimedFacts: { cartItemCount: 1, couponApplied: true },
 }
 
 // 3. Optional: your own fresh read of the same facts.
@@ -68,13 +80,16 @@ const result = verifyReceipt(packet, claim, currentState)
 console.log(result.accepted)            // false
 console.log(result.unauthorizedActions) // [ 'submit-payment' ]
 console.log(result.contradictions)      // [ { key: 'cartItemCount', claimedFact: 1, currentFact: 0 } ]
+console.log(result.coverage)
+// { stateSupplied: true, claimedFactCount: 2, comparedFactCount: 1, uncheckedFactKeys: [ 'couponApplied' ] }
 console.log(result.reason)
 // 1 claimed action(s) were never authorized: "submit-payment". 1 claimed fact(s) contradict the supplied current state: "cartItemCount".
 
 // 4. Keep the rejected claim instead of dropping it.
 const trail = createRefutationTrail()
-if (!result.accepted) trail.record(claim, result)
+if (!result.accepted) trail.record(claim, result, '2026-09-28T09:05:00.000Z')
 console.log(trail.list().length)        // 1
+console.log(trail.list()[0].id)         // refute-0-2026-09-28T09:05:00.000Z
 ```
 
 ## The core idea
@@ -89,7 +104,8 @@ observation is reported rather than resolved in either direction.
 
 ## API
 
-The package exports three functions and the types below.
+The package exports three functions and the types below. Every export has
+TSDoc in its declaration.
 
 ### `issuePacket(scope, authorityLevel, allowedActions, evidenceIds, options?)`
 
@@ -111,12 +127,16 @@ const packet = issuePacket(
 - `id` defaults to `pkt-` plus `crypto.randomUUID()`. In a runtime without
   `randomUUID` (for example a browser page served over plain HTTP) it falls
   back to a timestamp plus `Math.random`, which is not guaranteed unique.
-  Pass `options.id` if uniqueness matters.
-- `issuedAt` defaults to the current time as an ISO 8601 string. Values you
-  pass in `options` are stored as given, not validated.
-- `allowedActions` and `evidenceIds` must be arrays of strings; anything else
-  throws a `TypeError`. They are copied, so editing your arrays later does
-  not change the packet. `scope` is stored by reference.
+  Pass `options.id` if uniqueness matters. Only `undefined` means "generate
+  one"; any other value must be a string that shows something.
+- `issuedAt` defaults to the current time as an ISO 8601 string. A value you
+  pass must be a non-blank string; it is stored as given and is not checked to
+  be a date.
+- `allowedActions` and `evidenceIds` must be arrays of strings with no holes;
+  anything else throws a `TypeError` that names the bad index. Each is read
+  once and copied, so editing your arrays later does not change the packet.
+  `scope` is stored by reference.
+- `options` must be a plain object when given (`null` throws).
 
 ### `verifyReceipt(packet, claim, currentState?)`
 
@@ -145,6 +165,7 @@ const result = verifyReceipt(packet, claim, currentState)
 //   droppedEvidenceIds: [],
 //   contradictions: [],
 //   packetMismatch: false,
+//   coverage: { stateSupplied: true, claimedFactCount: 1, comparedFactCount: 1, uncheckedFactKeys: [] },
 //   reason: "Claim matches the issued packet's authority and evidence and answers
 //            the correct packet. 1 claimed fact(s) agree with the supplied current state."
 // }
@@ -175,21 +196,59 @@ How the checks work:
   non-matching entry is reported, including repeats. A claim with empty lists
   is accepted, because nothing in it falls outside the packet.
 - **Facts** are compared only for keys that exist in both
-  `claim.claimedFacts` and `currentState`. Plain objects are compared key by
-  key in any order, arrays element by element, and `0` equals `-0`. Dates are
-  compared by time value. Any other object (a `Map`, `Set`, or class
-  instance) only matches itself, so a difference the comparison cannot see
-  is reported as a contradiction rather than accepted. Circular facts throw
-  a `RangeError`.
+  `claim.claimedFacts` and `currentState` (an own key; an inherited one such
+  as `toString` does not count). Plain objects are compared key by key in any
+  order, arrays element by element, and `0` equals `-0`. Dates are compared
+  by time value. Any other object (a `Map`, `Set`, or class instance) only
+  matches itself, so a difference the comparison cannot see is reported as a
+  contradiction rather than accepted.
+- **`coverage`** says how much of that was done, on every result, accepted or
+  not. `stateSupplied` is `true` when you passed a `currentState` object
+  (`undefined` and `null` mean none). `claimedFactCount` is how many facts the
+  claim asserted. `comparedFactCount` is how many had a same-keyed value in
+  `currentState`; a fact that contradicted it still counts as compared, so
+  agreements are `comparedFactCount - contradictions.length`.
+  `uncheckedFactKeys` lists the rest, spelled exactly as the claim spelled
+  them, in the claim's key order (all of them when no state was supplied).
+  `comparedFactCount + uncheckedFactKeys.length` always equals
+  `claimedFactCount`. It never changes what `accepted` means.
 - **All four checks run** even when one fails, so a result can show a packet
   mismatch and unauthorized actions together.
 - **`reason`** is a readable summary for logs. Ids and keys from the claim are
-  JSON-quoted with line breaks escaped, so an agent cannot forge extra log
-  lines. For an accepted claim it says how many claimed facts were actually
-  cross-checked. Branch on the structured fields, not on this wording.
-- It throws a `TypeError` if `packet.allowedActions`, `packet.evidenceIds`,
-  `claim.claimedActions`, or `claim.citedEvidenceIds` is not an array. It does
-  not mutate its inputs and reads no clock.
+  JSON-quoted, and control characters, line breaks and bidirectional
+  formatting characters in them are escaped as `\uXXXX`, so an agent cannot
+  forge extra log lines, send terminal escapes, or reorder the line. The
+  structured fields keep the exact text. For an accepted claim `reason` says
+  how many claimed facts were actually cross-checked. Branch on the
+  structured fields, not on this wording.
+- **Input rules.** It throws a `TypeError`, rather than returning a result, for
+  input it cannot judge:
+  - `packet` or `claim` is not an object;
+  - `packet.id` or `claim.packetId` is missing, not a string, or shows
+    nothing (empty, or only whitespace and invisible characters). Before this
+    rule, two missing ids matched each other;
+  - `packet.allowedActions`, `packet.evidenceIds`, `claim.claimedActions` or
+    `claim.citedEvidenceIds` is not an array of strings, or has a hole. The
+    message names the index. A claim that lists a number or a `null` throws;
+    it is not reported as an unauthorized action;
+  - `claim.claimedFacts` is present but is not a plain or null-prototype
+    object (`null`, an array, a `Map`, a class instance and `true` all
+    throw). Leave it out, or pass `undefined`, for a claim with no facts;
+  - `currentState` is anything other than `undefined`, `null`, or a plain or
+    null-prototype object.
+
+  Each field is read once and the result is computed from what was read, so a
+  getter that changes its answer cannot pass validation and then be judged on
+  something else. It does not mutate its inputs and reads no clock.
+- **Circular and very deep facts.** Two references to the very same object are
+  equal without being walked, so one circular object passed on both sides
+  matches. Two separate circular values, and two separate acyclic values
+  nested deeper than the runtime's call stack allows, make `verifyReceipt`
+  throw a `RangeError` (stack overflow). It is never returned as an
+  acceptance. Catch it and treat the receipt as unverified. The depth at which
+  it happens depends on the runtime (6,000 nested levels overflowed on Node
+  26.3.0), so it is not a fixed limit. If facts come from an untrusted
+  source, bound their depth and size before calling.
 
 ### `createRefutationTrail()`
 
@@ -213,8 +272,10 @@ trail.list() // every retained entry, oldest first (a copy of the array)
 
 - `record(claim, result, recordedAt?)` stores both objects by reference and
   returns the entry. Entry ids look like `refute-<sequence>-<recordedAt>` and
-  are unique within one trail. It does not check that the result belongs to
-  the claim.
+  are unique within one trail. `claim` and `result` must be objects, `claim.packetId`
+  must be a non-blank string, and `recordedAt`, when given, must be a non-blank
+  string (all `TypeError` otherwise). It does not check that the result belongs
+  to the claim.
 - There is no `remove` or `delete`. Pruning history is a decision for your
   own storage layer.
 
@@ -227,7 +288,8 @@ trail.list() // every retained entry, oldest first (a copy of the array)
 | `AgentClaim<Fact>` | `packetId`, `claimedActions`, `citedEvidenceIds`, and optional `claimedFacts`, `summary`, `reportedAt` (the last two are not checked). |
 | `CurrentState<Fact>` | Your observation: a record of fact key to value. |
 | `Contradiction<Fact>` | `key`, `claimedFact`, `currentFact` for one disagreeing fact. |
-| `ReceiptResult<Fact>` | `accepted`, `unauthorizedActions`, `droppedEvidenceIds`, `contradictions`, `packetMismatch`, `reason`. |
+| `ReceiptCoverage` | `stateSupplied`, `claimedFactCount`, `comparedFactCount`, `uncheckedFactKeys`. |
+| `ReceiptResult<Fact>` | `accepted`, `unauthorizedActions`, `droppedEvidenceIds`, `contradictions`, `packetMismatch`, `coverage`, `reason`. |
 | `RefutationEntry<Fact>` | `id`, `packetId`, `claim`, `result`, `recordedAt`. |
 | `RefutationTrail<Fact>` | `record`, `list`, `find`. |
 
@@ -245,6 +307,7 @@ const packet = issuePacket(
   'local',
   ['transform-rows', 'write-output'],
   ['row-1042', 'row-1043', 'row-1044'],
+  { id: 'pkt-orders-dedupe', issuedAt: '2026-09-28T09:00:00.000Z' },
 )
 
 const claim = {
@@ -261,6 +324,7 @@ const currentState = { rowsWritten: 3, duplicatesRemoved: 1 }
 const result = verifyReceipt(packet, claim, currentState)
 // accepted: true, because the actions and evidence were authorized and
 // the independent row count agrees with the claim.
+// result.coverage: { stateSupplied: true, claimedFactCount: 2, comparedFactCount: 2, uncheckedFactKeys: [] }
 ```
 
 ## Authority levels
@@ -284,7 +348,8 @@ example `'observe' | 'draft' | 'sandbox' | 'production'`).
 - **`accepted` means the checks found no mismatch, not that the claim is
   true.** Observations are optional, and claimed facts missing from
   `currentState` are not compared, so an accepted receipt can contain facts
-  nobody checked. The accepted `reason` says how many were checked.
+  nobody checked. `result.coverage` says how many were compared and which
+  keys were not; the accepted `reason` says the same in words.
 - **`currentState` is only as good as what you pass in.** The kit has no
   browser, filesystem, or network access and cannot re-observe anything
   itself. A stale, spoofable, or agent-controlled `currentState` gives you a
@@ -297,29 +362,46 @@ example `'observe' | 'draft' | 'sandbox' | 'production'`).
   If `allowedActions` is too broad, a claim that stays inside it is accepted.
 - **Scope and authority are metadata.** Nothing checks a claim against
   `scope` or `authorityLevel`.
-- **Validate at your application boundary.** Beyond the array checks above,
-  the kit does not validate request bodies, timestamps, or the shape of
-  `claimedFacts`. Keep facts JSON-shaped.
+- **It checks the shape it compares, not your data.** The input rules above
+  make malformed ids, lists and fact containers throw. The kit still does not
+  validate request bodies, the values inside `claimedFacts`, `scope`,
+  `authorityLevel`, `issuedAt`, `reportedAt` or any timestamp, and it does not
+  defend against a hostile proxy or getter that throws. Keep facts
+  JSON-shaped and bound their depth (see "Circular and very deep facts").
+- **Nothing stops a replay.** The same accepted claim verifies again every
+  time; the kit keeps no record of what it has already accepted.
 - **No integrity or authenticity.** Packets and claims are not signed or
   hashed. Store packets somewhere the agent cannot edit them.
 - **The trail is in memory and holds references.** It is not durable,
-  immutable, or tamper-evident. For a tamper-evident record, append entries to
-  [`audit-chain-kit`](https://github.com/lkopietz3-byte/audit-chain-kit) (or
-  another append-only, hash-chained log) — see "Relationship to sibling
-  kits" below.
+  immutable, or tamper-evident. Copy entries into storage you control. A
+  hash-chained log such as
+  [`audit-chain-kit`](https://github.com/lkopietz3-byte/audit-chain-kit) adds
+  tamper evidence to the records you give it, with limits of its own: see
+  "Relationship to sibling kits" below.
 - **It is not a sandbox.** It checks the report after the fact and cannot
   prevent an action.
 
 ## Relationship to sibling kits
 
 [`audit-chain-kit`](https://github.com/lkopietz3-byte/audit-chain-kit) is a
-tamper-evident, hash-chained append-only log — it doesn't know what a
-"receipt" or a "claim" is, it just chains and verifies opaque entries. This
-kit's `RefutationEntry` (or a whole `ReceiptResult`) is a natural entry to
-append to that chain: `verifyReceipt` decides whether a claim holds up,
-`createRefutationTrail` remembers the rejections in memory for the current
-process, and `audit-chain-kit` gives that record durability and tamper
-evidence across restarts. The two packages share no code.
+hash-chained, append-only log of opaque entries. It does not know what a
+"receipt" or a "claim" is. A `RefutationEntry` (or a whole `ReceiptResult`) is
+a natural payload to append to it: `verifyReceipt` decides whether a claim
+holds up, `createRefutationTrail` remembers the rejections in memory for the
+current process, and a chain lets anyone who holds it detect an edit made
+without recomputing the hashes. The two packages share no code.
+
+What that does not give you, according to that kit's own README:
+
+- **Storage is yours.** Its chains are in-memory arrays. Writing them to disk
+  or a database, and coordinating writers, is your application's job. Importing
+  it does not make records survive a restart.
+- **An anchor is needed to catch a rewrite.** With no key and no signatures,
+  anyone who can write the stored chain can recompute it and it still
+  verifies. Detecting that needs an `{ index, entryHash }` anchor kept
+  somewhere the writer cannot change.
+- **Identity and time are claims.** Nothing in the chain proves who wrote an
+  entry, and `createdAt` is whatever the writer's clock said.
 
 ## A related concern this library does not handle
 
@@ -347,8 +429,8 @@ project, and runs the consumer probes in `scripts/`. Code tour:
 - [`src/trail.ts`](src/trail.ts) keeps rejected claims instead of dropping
   them.
 - [`test/`](test/) covers accepted, unauthorized, dropped-evidence,
-  mismatched-packet, and contradictory claims, fact comparison rules, input
-  checks, and the reason text.
+  mismatched-packet, and contradictory claims, fact comparison rules and
+  circular or deep input, input checks, coverage, and the reason text.
 
 See [`ENGINEERING.md`](ENGINEERING.md) for the invariants and release notes
 and [`CHANGELOG.md`](CHANGELOG.md) for changes.

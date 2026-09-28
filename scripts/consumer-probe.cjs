@@ -20,6 +20,7 @@ const claim = {
 };
 const ok = verifyReceipt(packet, claim);
 assert.equal(ok.accepted, true);
+assert.deepEqual(ok.coverage, { stateSupplied: false, claimedFactCount: 0, comparedFactCount: 0, uncheckedFactKeys: [] });
 
 const trail = createRefutationTrail();
 assert.deepEqual(trail.list(), []);

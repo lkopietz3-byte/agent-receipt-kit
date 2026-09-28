@@ -43,14 +43,17 @@ function factsMatch(a: unknown, b: unknown): boolean {
 /**
  * Formats an untrusted id or key for the human-readable `reason`. JSON
  * quoting escapes quotes, backslashes and C0 control characters (including
- * \n and \r); the extra replace escapes DEL, C1 controls (including U+0085)
- * and U+2028/U+2029, which some log viewers also treat as line breaks. This
- * keeps an agent-supplied string from forging extra log lines or blurring
- * where one id ends and the next begins.
+ * \n, \r and the terminal escape U+001B). The extra replace escapes DEL, C1
+ * controls (including U+0085), U+2028/U+2029 (which some log viewers also treat
+ * as line breaks) and the bidirectional formatting characters (U+061C,
+ * U+200E/U+200F, U+202A to U+202E, U+2066 to U+2069) that can reorder the text
+ * around an id. That keeps an agent-supplied string from forging extra log
+ * lines, sending terminal escapes, or blurring where one id ends and the next
+ * begins. Ordinary letters, emoji and invisible joiners are left alone.
  */
 function quote(value: string): string {
   return JSON.stringify(value).replace(
-    /[\u007f-\u009f\u2028\u2029]/g,
+    /[\p{Cc}\p{Zl}\p{Zp}\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/gu,
     (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`,
   )
 }

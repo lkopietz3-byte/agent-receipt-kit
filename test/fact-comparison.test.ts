@@ -113,6 +113,14 @@ describe('fact comparison: values that are not plain JSON', () => {
 })
 
 describe('fact comparison: mixed kinds never match', () => {
+  it('reports a contradiction, not a crash, when undefined meets an object or the reverse', () => {
+    expectContradiction(undefined, {})
+    expectContradiction({}, undefined)
+    expectContradiction(undefined, [])
+    expectContradiction(undefined, null)
+    expectMatch(undefined, undefined)
+  })
+
   it('reports a contradiction when a Date meets a plain object, in either order', () => {
     expectContradiction(new Date(0), {})
     expectContradiction({}, new Date(0))

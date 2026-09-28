@@ -153,6 +153,22 @@ describe('verifyReceipt reason text', () => {
     })
   })
 
+  it('says only what failed when a single check fails', () => {
+    const base = { packetId: 'pkt-reason', claimedActions: ['log-in'], citedEvidenceIds: ['screenshot-1'] }
+    expect(verifyReceipt(packet, { ...base, claimedActions: ['wipe-disk'] }).reason).toBe(
+      '1 claimed action(s) were never authorized: "wipe-disk".',
+    )
+    expect(verifyReceipt(packet, { ...base, citedEvidenceIds: ['made-up'] }).reason).toBe(
+      '1 cited evidence id(s) were not part of the issued packet: "made-up".',
+    )
+    expect(verifyReceipt(packet, { ...base, packetId: 'pkt-other' }).reason).toBe(
+      'Claim answers packet "pkt-other", not the packet under review ("pkt-reason").',
+    )
+    expect(verifyReceipt(packet, { ...base, claimedFacts: { status: 'done' } }, { status: 'failed' }).reason).toBe(
+      '1 claimed fact(s) contradict the supplied current state: "status".',
+    )
+  })
+
   it('lists every failed check, in a fixed order', () => {
     const result = verifyReceipt(
       packet,

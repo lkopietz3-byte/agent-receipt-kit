@@ -11,29 +11,34 @@ const hasOwn = (target: object, key: PropertyKey): boolean =>
  * Only JSON-shaped values are compared by content: primitives (0 equals -0,
  * NaN equals NaN), arrays (element by element, where a hole only matches a
  * hole) and plain or null-prototype objects (own enumerable string keys, any
- * order). Dates are compared by time value. Any other object (Map, Set, RegExp, Error, typed
- * arrays, class instances) matches only itself, so a difference this
- * function cannot see is reported as a contradiction instead of being
- * silently accepted. Circular structures are not supported and overflow the
- * stack (a thrown RangeError, never an acceptance).
+ * order). Dates are compared by time value. Any other object (Map, Set,
+ * RegExp, Error, typed arrays, class instances) matches only itself, so a
+ * difference this function cannot see is reported as a contradiction instead
+ * of being silently accepted. A value never matches one of a different kind.
+ *
+ * Two references to the very same object are equal without being walked, so a
+ * circular object compared with itself matches. Two separate circular
+ * structures, and two separate acyclic structures nested deeper than the
+ * runtime's call stack allows, overflow the stack and throw a RangeError,
+ * never an acceptance. The depth at which that happens depends on the
+ * runtime, so it is not a fixed limit.
  */
 function factsMatch(a: unknown, b: unknown): boolean {
   // `===` makes 0 and -0 equal (JSON serializes both as 0); Object.is makes
   // NaN equal to NaN.
   if (a === b || Object.is(a, b)) return true
-  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false
-  if (Array.isArray(a) || Array.isArray(b)) {
-    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false
-    for (let index = 0; index < a.length; index += 1) {
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false
+    for (const index of a.keys()) {
       const present = hasOwn(a, index)
       if (present !== hasOwn(b, index)) return false
       if (present && !factsMatch(a[index], b[index])) return false
     }
     return true
   }
-  if (a instanceof Date || b instanceof Date) {
-    return a instanceof Date && b instanceof Date && Object.is(a.getTime(), b.getTime())
-  }
+  if (a instanceof Date && b instanceof Date) return Object.is(a.getTime(), b.getTime())
+  // Everything else, including an array or a Date met by another kind of
+  // value, needs two plain records to match by content.
   if (!isPlainRecord(a) || !isPlainRecord(b)) return false
   const aKeys = Object.keys(a)
   if (aKeys.length !== Object.keys(b).length) return false

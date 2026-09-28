@@ -53,16 +53,6 @@ describe('verifyReceipt reason text', () => {
     expect(result.reason).toBe('Claim answers packet "pkt-other", not the packet under review ("pkt-reason").')
   })
 
-  it('names the type, not the value, of a packet id that is not a string', () => {
-    const result = verifyReceipt(packet, {
-      packetId: 42 as unknown as string,
-      claimedActions: [],
-      citedEvidenceIds: [],
-    })
-    expect(result.packetMismatch).toBe(true)
-    expect(result.reason).toBe('Claim answers packet <number>, not the packet under review ("pkt-reason").')
-  })
-
   describe('when the claim is accepted', () => {
     const accepted = { packetId: 'pkt-reason', claimedActions: ['log-in'], citedEvidenceIds: ['screenshot-1'] }
     const base = "Claim matches the issued packet's authority and evidence and answers the correct packet."

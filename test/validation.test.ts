@@ -89,15 +89,14 @@ describe('verifyReceipt input checks', () => {
     )
   })
 
-  it('treats a non-string entry in a claim as unauthorized rather than throwing', () => {
-    const result = verifyReceipt(packet, {
-      ...claim,
-      claimedActions: ['log-in', 7 as unknown as string],
-      citedEvidenceIds: [{} as unknown as string],
-    })
-    expect(result.accepted).toBe(false)
-    expect(result.unauthorizedActions).toEqual([7])
-    expect(result.droppedEvidenceIds).toEqual([{}])
-    expect(result.reason).toContain('never authorized: <number>.')
+  it('throws, rather than reporting, a non-string entry in a claim list', () => {
+    // Before 0.2.0 these entries were reported as unauthorized or dropped. The
+    // lists must now be arrays of strings, like the packet's own lists.
+    expect(() => verifyReceipt(packet, { ...claim, claimedActions: ['log-in', 7 as unknown as string] })).toThrow(
+      new TypeError('claim.claimedActions[1] must be a string (got number).'),
+    )
+    expect(() => verifyReceipt(packet, { ...claim, citedEvidenceIds: [{} as unknown as string] })).toThrow(
+      new TypeError('claim.citedEvidenceIds[0] must be a string (got object).'),
+    )
   })
 })

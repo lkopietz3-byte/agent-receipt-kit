@@ -1,13 +1,8 @@
 import type { AgentClaim, Contradiction, CurrentState, ReceiptResult, WorkPacket } from './types.js'
-import { assertArray, assertObject } from './validate.js'
+import { assertId, assertObject, assertPlainRecord, isPlainRecord, snapshotStringArray } from './validate.js'
 
 const hasOwn = (target: object, key: PropertyKey): boolean =>
   Object.prototype.hasOwnProperty.call(target, key)
-
-function isPlainObject(value: object): boolean {
-  const prototype: unknown = Object.getPrototypeOf(value)
-  return prototype === Object.prototype || prototype === null
-}
 
 /**
  * Structural equality with zero dependencies, for comparing a claimed fact
@@ -39,12 +34,10 @@ function factsMatch(a: unknown, b: unknown): boolean {
   if (a instanceof Date || b instanceof Date) {
     return a instanceof Date && b instanceof Date && Object.is(a.getTime(), b.getTime())
   }
-  if (!isPlainObject(a) || !isPlainObject(b)) return false
-  const aRecord = a as Record<string, unknown>
-  const bRecord = b as Record<string, unknown>
-  const aKeys = Object.keys(aRecord)
-  if (aKeys.length !== Object.keys(bRecord).length) return false
-  return aKeys.every((key) => hasOwn(bRecord, key) && factsMatch(aRecord[key], bRecord[key]))
+  if (!isPlainRecord(a) || !isPlainRecord(b)) return false
+  const aKeys = Object.keys(a)
+  if (aKeys.length !== Object.keys(b).length) return false
+  return aKeys.every((key) => hasOwn(b, key) && factsMatch(a[key], b[key]))
 }
 
 /**
@@ -55,15 +48,14 @@ function factsMatch(a: unknown, b: unknown): boolean {
  * keeps an agent-supplied string from forging extra log lines or blurring
  * where one id ends and the next begins.
  */
-function quote(value: unknown): string {
-  if (typeof value !== 'string') return `<${typeof value}>`
+function quote(value: string): string {
   return JSON.stringify(value).replace(
     /[\u007f-\u009f\u2028\u2029]/g,
     (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`,
   )
 }
 
-function quoteAll(values: readonly unknown[]): string {
+function quoteAll(values: readonly string[]): string {
   return values.map(quote).join(', ')
 }
 
@@ -122,10 +114,16 @@ function acceptedReason(factCount: number, stateSupplied: boolean, uncheckedKeys
  *   claim.claimedFacts. Omitted or null means no fact is cross-checked.
  * @returns A ReceiptResult naming every mismatch; see its field docs.
  * @throws TypeError if packet or claim is not a non-null object (e.g.
- *   `null`, `undefined`, a string, or an array), or if
- *   packet.allowedActions, packet.evidenceIds, claim.claimedActions or
- *   claim.citedEvidenceIds is not an array. Non-string entries in the claim
- *   lists are reported as unauthorized or dropped, not thrown.
+ *   `null`, `undefined`, a string, or an array); if packet.id or
+ *   claim.packetId is missing, not a string, or shows nothing (empty, or only
+ *   whitespace and invisible characters); if packet.allowedActions,
+ *   packet.evidenceIds, claim.claimedActions or claim.citedEvidenceIds is not
+ *   an array of strings, or has a hole (the message names the index); if
+ *   claim.claimedFacts is present (not `undefined`) but is not a plain or
+ *   null-prototype object (`null`, an array, a Map, a class instance and
+ *   `true` all throw); or if currentState is neither omitted, `null`, nor a
+ *   plain or null-prototype object. Each field is read once, and the result
+ *   is computed from the values that were validated.
  * @throws RangeError if a claimed fact and its current-state counterpart
  *   are both circular structures (stack overflow). Never an acceptance.
  */
@@ -136,23 +134,32 @@ export function verifyReceipt<Scope = unknown, Authority = unknown, Fact = unkno
 ): ReceiptResult<Fact> {
   assertObject(packet, 'packet')
   assertObject(claim, 'claim')
-  assertArray(packet.allowedActions, 'packet.allowedActions')
-  assertArray(packet.evidenceIds, 'packet.evidenceIds')
-  assertArray(claim.claimedActions, 'claim.claimedActions')
-  assertArray(claim.citedEvidenceIds, 'claim.citedEvidenceIds')
+  // Read every field of the caller's objects exactly once, validate what was
+  // read, and compute from those same values.
+  const packetId: unknown = packet.id
+  assertId(packetId, 'packet.id')
+  const allowedActions = snapshotStringArray(packet.allowedActions, 'packet.allowedActions')
+  const issuedEvidenceIds = snapshotStringArray(packet.evidenceIds, 'packet.evidenceIds')
+  const claimPacketId: unknown = claim.packetId
+  assertId(claimPacketId, 'claim.packetId')
+  const claimedActions = snapshotStringArray(claim.claimedActions, 'claim.claimedActions')
+  const citedEvidenceIds = snapshotStringArray(claim.citedEvidenceIds, 'claim.citedEvidenceIds')
+  const claimedFacts: unknown = claim.claimedFacts
+  if (claimedFacts !== undefined) assertPlainRecord(claimedFacts, 'claim.claimedFacts')
+  const stateSupplied = currentState !== undefined && currentState !== null
+  if (stateSupplied) assertPlainRecord(currentState, 'currentState')
 
-  const packetMismatch = claim.packetId !== packet.id
+  const packetMismatch = claimPacketId !== packetId
 
-  const allowed = new Set(packet.allowedActions)
-  const unauthorizedActions = claim.claimedActions.filter((action) => !allowed.has(action))
+  const allowed = new Set(allowedActions)
+  const unauthorizedActions = claimedActions.filter((action) => !allowed.has(action))
 
-  const issuedEvidence = new Set(packet.evidenceIds)
-  const droppedEvidenceIds = claim.citedEvidenceIds.filter((id) => !issuedEvidence.has(id))
+  const issuedEvidence = new Set(issuedEvidenceIds)
+  const droppedEvidenceIds = citedEvidenceIds.filter((id) => !issuedEvidence.has(id))
 
   const contradictions: Contradiction<Fact>[] = []
-  const claimedFactEntries = claim.claimedFacts ? Object.entries(claim.claimedFacts) : []
+  const claimedFactEntries = claimedFacts === undefined ? [] : Object.entries(claimedFacts as Record<string, Fact>)
   const uncheckedFactKeys: string[] = []
-  const stateSupplied = currentState !== undefined && currentState !== null
   if (stateSupplied) {
     for (const [key, claimedFact] of claimedFactEntries) {
       if (!hasOwn(currentState, key)) {
@@ -174,7 +181,7 @@ export function verifyReceipt<Scope = unknown, Authority = unknown, Fact = unkno
 
   const reasons: string[] = []
   if (packetMismatch) {
-    reasons.push(`Claim answers packet ${quote(claim.packetId)}, not the packet under review (${quote(packet.id)}).`)
+    reasons.push(`Claim answers packet ${quote(claimPacketId)}, not the packet under review (${quote(packetId)}).`)
   }
   if (unauthorizedActions.length) {
     reasons.push(`${unauthorizedActions.length} claimed action(s) were never authorized: ${quoteAll(unauthorizedActions)}.`)

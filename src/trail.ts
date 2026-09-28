@@ -1,4 +1,5 @@
 import type { AgentClaim, ReceiptResult } from './types.js'
+import { assertId, assertObject } from './validate.js'
 
 /**
  * One retained record of a claim, typically one that verifyReceipt did not
@@ -50,13 +51,19 @@ export function createRefutationTrail<Fact = unknown>(): RefutationTrail<Fact> {
   let sequence = 0
 
   return {
-    record(claim, result, recordedAt = new Date().toISOString()) {
+    record(claim, result, recordedAt) {
+      assertObject(claim, 'claim')
+      assertObject(result, 'result')
+      const packetId: unknown = claim.packetId
+      assertId(packetId, 'claim.packetId')
+      const when: unknown = recordedAt === undefined ? new Date().toISOString() : recordedAt
+      assertId(when, 'recordedAt')
       const entry: RefutationEntry<Fact> = {
-        id: `refute-${sequence++}-${recordedAt}`,
-        packetId: claim.packetId,
+        id: `refute-${sequence++}-${when}`,
+        packetId,
         claim,
         result,
-        recordedAt,
+        recordedAt: when,
       }
       entries.push(entry)
       return entry

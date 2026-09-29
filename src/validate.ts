@@ -106,3 +106,68 @@ export function assertPlainRecord(value: unknown, label: string): asserts value 
     throw new TypeError(`${label} must be a plain object (got ${describe(value)}).`)
   }
 }
+
+const MAX_PROBLEMS_PER_LIST = 20
+
+/**
+ * Scans a list taken from the CLAIM, which the agent being checked produced,
+ * so problems with its entries are reported instead of thrown. Throws a
+ * TypeError naming `label` only when `value` is not an array at all (the
+ * 0.1.1 behavior).
+ *
+ * Reads `length`, the own index keys and each element once, and returns the
+ * string entries in index order as a new array (the only thing the caller
+ * computes from). Each hole (a run of holes counts once), non-string entry and
+ * blank string adds a sentence to `problems` that names the index and the kind
+ * of value but never echoes its content. Only own index keys are walked, so an
+ * enormous sparse array costs time in proportion to what is present, and a
+ * list reports at most 20 problems plus one line saying how many were left out.
+ */
+export function scanClaimList(value: unknown, label: string, problems: string[]): string[] {
+  if (!Array.isArray(value)) {
+    throw new TypeError(`${label} must be an array (got ${describe(value)}).`)
+  }
+  const length: number = value.length
+  const indices = Object.keys(value)
+    .map(Number)
+    .filter((index) => Number.isInteger(index) && index >= 0 && index < length)
+    .sort((a, b) => a - b)
+  const strings: string[] = []
+  const found: string[] = []
+  let notListed = 0
+  const note = (text: () => string): void => {
+    if (found.length < MAX_PROBLEMS_PER_LIST) found.push(text())
+    else notListed += 1
+  }
+  const gap = (from: number, to: number): void => {
+    note(() =>
+      from === to
+        ? `${label}[${from}] is missing (the array has a hole).`
+        : `${label}[${from}..${to}] are missing (the array has holes).`,
+    )
+  }
+  let next = 0
+  for (const index of indices) {
+    if (index > next) gap(next, index - 1)
+    next = index + 1
+    const item: unknown = value[index]
+    if (typeof item !== 'string') {
+      note(() => `${label}[${index}] is not a string (got ${describe(item)}).`)
+      continue
+    }
+    if (isBlank(item)) {
+      note(() => `${label}[${index}] shows nothing (empty, or only whitespace and invisible characters).`)
+    }
+    strings.push(item)
+  }
+  if (next < length) gap(next, length - 1)
+  problems.push(...found)
+  if (notListed > 0) {
+    problems.push(
+      notListed === 1
+        ? `${label} has 1 more problem that is not listed.`
+        : `${label} has ${notListed} more problems that are not listed.`,
+    )
+  }
+  return strings
+}

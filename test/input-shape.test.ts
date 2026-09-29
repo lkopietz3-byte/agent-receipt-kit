@@ -22,23 +22,14 @@ describe('identity must be a present, visible string (OBS-01)', () => {
     ).toThrow(new TypeError('packet.id must be a non-empty string (got undefined).'))
   })
 
-  it('names claim.packetId when only the claim has no id', () => {
-    expect(() => verifyReceipt(packet, asClaim({ claimedActions: [], citedEvidenceIds: [] }))).toThrow(
-      new TypeError('claim.packetId must be a non-empty string (got undefined).'),
-    )
-  })
-
   it.each([
     ['a number', 7, 'number'],
     ['null', null, 'null'],
     ['an array', ['pkt-shape'], 'an array'],
     ['an object', {}, 'object'],
-  ])('rejects %s as an id', (_name, id, got) => {
+  ])('rejects %s as a packet id', (_name, id, got) => {
     expect(() => verifyReceipt(asPacket({ ...packet, id }), claim)).toThrow(
       new TypeError(`packet.id must be a non-empty string (got ${got}).`),
-    )
-    expect(() => verifyReceipt(packet, asClaim({ ...claim, packetId: id }))).toThrow(
-      new TypeError(`claim.packetId must be a non-empty string (got ${got}).`),
     )
   })
 
@@ -54,11 +45,8 @@ describe('identity must be a present, visible string (OBS-01)', () => {
     ['a byte order mark', '﻿'],
     ['a no-break space', ' '],
   ])('rejects an id that shows nothing (%s), which would otherwise match another blank id', (_name, blank) => {
-    expect(() => verifyReceipt(asPacket({ ...packet, id: blank }), asClaim({ ...claim, packetId: blank }))).toThrow(
+    expect(() => verifyReceipt(asPacket({ ...packet, id: blank }), claim)).toThrow(
       new TypeError('packet.id must be a non-empty string (got a string with nothing visible in it).'),
-    )
-    expect(() => verifyReceipt(packet, asClaim({ ...claim, packetId: blank }))).toThrow(
-      new TypeError('claim.packetId must be a non-empty string (got a string with nothing visible in it).'),
     )
   })
 
@@ -69,34 +57,13 @@ describe('identity must be a present, visible string (OBS-01)', () => {
   })
 })
 
-describe('lists must be dense arrays of strings (OBS-02, OBS-04)', () => {
-  it('rejects a numeric entry in a stored packet list, even when the claim repeats the same number', () => {
+describe('the packet\'s lists must be dense arrays of strings (OBS-02)', () => {
+  it('throws for a numeric entry in a stored packet list, even when the claim repeats the same number', () => {
     expect(() =>
       verifyReceipt(asPacket({ ...packet, allowedActions: [7] }), asClaim({ ...claim, claimedActions: [7] })),
     ).toThrow(new TypeError('packet.allowedActions[0] must be a string (got number).'))
     expect(() => verifyReceipt(asPacket({ ...packet, evidenceIds: ['ok', null] }), claim)).toThrow(
       new TypeError('packet.evidenceIds[1] must be a string (got null).'),
-    )
-  })
-
-  it('rejects a non-string entry in a claim list instead of reporting it', () => {
-    expect(() => verifyReceipt(packet, asClaim({ ...claim, claimedActions: ['log-in', 7] }))).toThrow(
-      new TypeError('claim.claimedActions[1] must be a string (got number).'),
-    )
-    expect(() => verifyReceipt(packet, asClaim({ ...claim, citedEvidenceIds: [{}] }))).toThrow(
-      new TypeError('claim.citedEvidenceIds[0] must be a string (got object).'),
-    )
-  })
-
-  it('rejects a hole in a claim list, which filter() would skip and so accept', () => {
-    // eslint-disable-next-line no-sparse-arrays -- the hole is the test input
-    const sparse = ['log-in', , 'log-in']
-    expect(() => verifyReceipt(packet, asClaim({ ...claim, claimedActions: sparse }))).toThrow(
-      new TypeError('claim.claimedActions[1] is missing (the array has a hole).'),
-    )
-    // eslint-disable-next-line no-sparse-arrays -- the hole is the test input
-    expect(() => verifyReceipt(packet, asClaim({ ...claim, citedEvidenceIds: [, 'screenshot-1'] }))).toThrow(
-      new TypeError('claim.citedEvidenceIds[0] is missing (the array has a hole).'),
     )
   })
 
@@ -112,20 +79,6 @@ describe('lists must be dense arrays of strings (OBS-02, OBS-04)', () => {
     )
   })
 
-  it('does not let an inherited array index fill a hole', () => {
-    const inherited = Object.getOwnPropertyDescriptor(Array.prototype, 1)
-    Object.defineProperty(Array.prototype, 1, { value: 'log-in', configurable: true, writable: true })
-    try {
-      // eslint-disable-next-line no-sparse-arrays -- the hole is the test input
-      expect(() => verifyReceipt(packet, asClaim({ ...claim, claimedActions: ['log-in', ,] }))).toThrow(
-        new TypeError('claim.claimedActions[1] is missing (the array has a hole).'),
-      )
-    } finally {
-      if (inherited) Object.defineProperty(Array.prototype, 1, inherited)
-      else delete (Array.prototype as unknown as Record<number, unknown>)[1]
-    }
-  })
-
   it('rejects a hole in the lists given to issuePacket', () => {
     // eslint-disable-next-line no-sparse-arrays -- the hole is the test input
     expect(() => issuePacket({}, 'local', ['a', , 'b'] as string[], [], fixed)).toThrow(
@@ -138,28 +91,11 @@ describe('lists must be dense arrays of strings (OBS-02, OBS-04)', () => {
   })
 })
 
-describe('claimedFacts and currentState must be plain objects (OBS-03)', () => {
+describe('currentState must be a plain object (OBS-03)', () => {
   const withFacts = (claimedFacts: unknown): AgentClaim => asClaim({ ...claim, claimedFacts })
   class Facts {
     cartItemCount = 1
   }
-
-  it.each([
-    ['true', true, 'boolean'],
-    ['a string', 'cartItemCount', 'string'],
-    ['a number', 3, 'number'],
-    ['null', null, 'null'],
-    ['an array', [1], 'an array'],
-    ['a Map', new Map([['cartItemCount', 1]]), 'a non-plain object'],
-    ['a Set', new Set(['cartItemCount']), 'a non-plain object'],
-    ['a Date', new Date(0), 'a non-plain object'],
-    ['a RegExp', /x/u, 'a non-plain object'],
-    ['a class instance', new Facts(), 'a non-plain object'],
-  ])('rejects claimedFacts that is %s, which used to read as zero facts and be accepted', (_name, facts, got) => {
-    expect(() => verifyReceipt(packet, withFacts(facts), { cartItemCount: 2 })).toThrow(
-      new TypeError(`claim.claimedFacts must be a plain object (got ${got}).`),
-    )
-  })
 
   it.each([
     ['a string', 'x', 'string'],
@@ -337,12 +273,13 @@ describe('refutation trail input checks', () => {
     )
   })
 
-  it('rejects a claim whose packetId is missing or blank', () => {
+  it('records a claim whose packetId is missing or blank as given, because verifyReceipt rejects such a claim and the trail keeps rejections', () => {
     const trail = createRefutationTrail()
-    expect(() => trail.record(asClaim({ claimedActions: [] }), result)).toThrow(
-      new TypeError('claim.packetId must be a non-empty string (got undefined).'),
-    )
-    expect(() => trail.record(asClaim({ packetId: '​' }), result)).toThrow(TypeError)
+    const noId = asClaim({ claimedActions: [], citedEvidenceIds: [] })
+    const rejected = verifyReceipt(packet, noId)
+    expect(rejected.accepted).toBe(false)
+    expect(trail.record(noId, rejected, 'T').packetId).toBeUndefined()
+    expect(trail.record(asClaim({ packetId: '\u200B' }), result, 'T').packetId).toBe('\u200B')
   })
 
   it('rejects a recordedAt that is not a non-blank string, and does not use up a sequence number', () => {

@@ -162,6 +162,7 @@ describe('result.coverage', () => {
       droppedEvidenceIds: [],
       contradictions: [],
       packetMismatch: false,
+      claimProblems: [],
       reason:
         "Claim matches the issued packet's authority and evidence and answers the correct packet. " +
         '1 claimed fact(s) agree with the supplied current state.',

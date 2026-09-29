@@ -85,18 +85,21 @@ export interface WorkPacket<Scope = unknown, Authority = AuthorityLevel> {
 export interface AgentClaim<Fact = unknown> {
   /**
    * The id of the WorkPacket this claim responds to. Must be a string that
-   * shows something; a missing, non-string or blank id throws instead of
-   * matching another missing or blank id.
+   * shows something. A missing, non-string or blank id can never equal the
+   * packet's id, so verifyReceipt reports a packetMismatch (it neither throws
+   * nor matches one missing id with another).
    */
   packetId: string
   /**
-   * Action identifiers the agent claims to have taken. A dense array of
-   * strings (no holes, no non-strings), or verifyReceipt throws a TypeError.
+   * Action identifiers the agent claims to have taken. Must be an array
+   * (verifyReceipt throws a TypeError otherwise, as in 0.1.1). A non-string
+   * entry, a hole or a blank string is rejected: `accepted` is false and
+   * ReceiptResult.claimProblems names it.
    */
   claimedActions: string[]
   /**
-   * Evidence/reference ids the agent cites in support of its claim. A dense
-   * array of strings, like claimedActions.
+   * Evidence/reference ids the agent cites in support of its claim. Same
+   * rules as claimedActions.
    */
   citedEvidenceIds: string[]
   /**
@@ -106,8 +109,9 @@ export interface AgentClaim<Fact = unknown> {
    * supplied `currentState` is compared with it; facts without a matching
    * key are not checked (see ReceiptResult.coverage). When present it must be
    * a plain or null-prototype object: `null`, an array, a Map, a class
-   * instance or a primitive throws a TypeError, and only `undefined` means
-   * "no facts". Keep values JSON-shaped (plain objects, arrays, primitives);
+   * instance or a primitive rejects the claim (`accepted` is false and
+   * claimProblems says so; nothing is thrown), and only `undefined` means "no
+   * facts". Keep values JSON-shaped (plain objects, arrays, primitives);
    * Dates are compared by time value, and any other object only matches
    * itself. Two separate circular values, or two separate values nested
    * deeper than the runtime's stack allows, make verifyReceipt throw a
@@ -180,8 +184,8 @@ export interface ReceiptCoverage {
 export interface ReceiptResult<Fact = unknown> {
   /**
    * True only when there are zero unauthorized actions, zero dropped
-   * evidence ids, zero contradictions, and the claim's packetId matches the
-   * packet under review. It means these checks found no mismatch, not that
+   * evidence ids, zero contradictions, zero claim problems, and the claim's
+   * packetId matches the packet under review. It means these checks found no mismatch, not that
    * the claim is true: facts with no matching currentState key, and all
    * facts when no currentState is supplied, are never compared. `coverage`
    * says how many were.
@@ -203,6 +207,16 @@ export interface ReceiptResult<Fact = unknown> {
    * review is never accepted, regardless of its other contents.
    */
   packetMismatch: boolean
+  /**
+   * Problems with the shape of the claim itself, in words that name a field and
+   * an index and never echo the claim's content. Empty for a well-formed claim.
+   * The claim is produced by the agent being checked, so a malformed one is
+   * rejected here (and in `reason`), never thrown and never accepted: a
+   * non-string entry, a hole or a blank string in `claimedActions` or
+   * `citedEvidenceIds`, or a `claimedFacts` that is not a plain object. A list
+   * reports at most 20 problems plus one line counting the rest. Additive.
+   */
+  claimProblems: string[]
   /**
    * How many claimed facts were compared and which were not. Additive: it does
    * not change what `accepted` means. See ReceiptCoverage.

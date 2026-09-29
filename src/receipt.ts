@@ -1,5 +1,5 @@
 import type { AgentClaim, Contradiction, CurrentState, ReceiptCoverage, ReceiptResult, WorkPacket } from './types.js'
-import { assertId, assertObject, assertPlainRecord, isPlainRecord, snapshotStringArray } from './validate.js'
+import { assertId, assertObject, assertPlainRecord, describe, isPlainRecord, scanClaimList, snapshotStringArray } from './validate.js'
 
 const hasOwn = (target: object, key: PropertyKey): boolean =>
   Object.prototype.hasOwnProperty.call(target, key)
@@ -54,9 +54,12 @@ function factsMatch(a: unknown, b: unknown): boolean {
  * U+200E/U+200F, U+202A to U+202E, U+2066 to U+2069) that can reorder the text
  * around an id. That keeps an agent-supplied string from forging extra log
  * lines, sending terminal escapes, or blurring where one id ends and the next
- * begins. Ordinary letters, emoji and invisible joiners are left alone.
+ * begins. Ordinary letters, emoji and invisible joiners are left alone. A
+ * value that is not a string (a bad claim.packetId) is shown as its type, such
+ * as `<number>`, never as its content.
  */
-function quote(value: string): string {
+function quote(value: unknown): string {
+  if (typeof value !== 'string') return `<${typeof value}>`
   return JSON.stringify(value).replace(
     /[\p{Cc}\p{Zl}\p{Zp}\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/gu,
     (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`,
@@ -116,22 +119,31 @@ function acceptedReason(coverage: ReceiptCoverage): string {
  * only matches itself, so the comparison fails closed. The function is
  * synchronous, reads no clock and does not mutate its inputs.
  *
- * @param packet The WorkPacket that was actually issued.
+ * Who supplies what decides what happens. The packet and currentState come
+ * from the caller's own code, so a malformed one throws a TypeError. The claim
+ * is produced by the agent being checked, so a malformed claim is rejected in
+ * the result (`accepted: false`, `claimProblems` and `reason`), never thrown
+ * and never accepted, with two exceptions kept from 0.1.1: a claim that is not
+ * an object, and a claim list that is not an array, throw a TypeError.
+ *
+ * @param packet The WorkPacket that was actually issued (trusted).
  * @param claim The agent's report. Treated as untrusted.
  * @param currentState Optional fresher observation, keyed like
  *   claim.claimedFacts. Omitted or null means no fact is cross-checked.
  * @returns A ReceiptResult naming every mismatch; see its field docs.
- * @throws TypeError if packet or claim is not a non-null object (e.g.
- *   `null`, `undefined`, a string, or an array); if packet.id or
- *   claim.packetId is missing, not a string, or shows nothing (empty, or only
- *   whitespace and invisible characters); if packet.allowedActions,
- *   packet.evidenceIds, claim.claimedActions or claim.citedEvidenceIds is not
- *   an array of strings, or has a hole (the message names the index); if
- *   claim.claimedFacts is present (not `undefined`) but is not a plain or
- *   null-prototype object (`null`, an array, a Map, a class instance and
- *   `true` all throw); or if currentState is neither omitted, `null`, nor a
- *   plain or null-prototype object. Each field is read once, and the result
- *   is computed from the values that were validated.
+ * @throws TypeError if packet is not a non-null object (a string, an array
+ *   and `null` all throw); if packet.id is missing, not a string, or shows
+ *   nothing (empty, or only whitespace and invisible characters); if
+ *   packet.allowedActions or packet.evidenceIds is not an array of strings, or
+ *   has a hole (the message names the index); or if currentState is neither
+ *   omitted, `null`, nor a plain or null-prototype object. Also, as in 0.1.1,
+ *   if claim is not a non-null object, or claim.claimedActions or
+ *   claim.citedEvidenceIds is missing or not an array. Every other problem
+ *   with the claim is reported in the result, not thrown: a non-string entry,
+ *   hole or blank string in a claim list, a claimedFacts that is not a plain
+ *   object, and a missing, non-string or blank claim.packetId (a
+ *   packetMismatch). Each field is read once, and the result is computed from
+ *   the values that were read.
  * @throws RangeError if a claimed fact and its current-state counterpart
  *   are both circular structures (stack overflow). Never an acceptance.
  */
@@ -149,11 +161,18 @@ export function verifyReceipt<Scope = unknown, Authority = unknown, Fact = unkno
   const allowedActions = snapshotStringArray(packet.allowedActions, 'packet.allowedActions')
   const issuedEvidenceIds = snapshotStringArray(packet.evidenceIds, 'packet.evidenceIds')
   const claimPacketId: unknown = claim.packetId
-  assertId(claimPacketId, 'claim.packetId')
-  const claimedActions = snapshotStringArray(claim.claimedActions, 'claim.claimedActions')
-  const citedEvidenceIds = snapshotStringArray(claim.citedEvidenceIds, 'claim.citedEvidenceIds')
-  const claimedFacts: unknown = claim.claimedFacts
-  if (claimedFacts !== undefined) assertPlainRecord(claimedFacts, 'claim.claimedFacts')
+  // The claim comes from the agent being checked, so a malformed claim is
+  // rejected in the result (claimProblems and reason), not thrown. A claim that
+  // is not an object, or a list that is not an array, still throws (0.1.1).
+  const claimProblems: string[] = []
+  const claimedActions = scanClaimList(claim.claimedActions, 'claim.claimedActions', claimProblems)
+  const citedEvidenceIds = scanClaimList(claim.citedEvidenceIds, 'claim.citedEvidenceIds', claimProblems)
+  const rawFacts: unknown = claim.claimedFacts
+  let claimedFacts: Record<string, unknown> | undefined
+  if (isPlainRecord(rawFacts)) claimedFacts = rawFacts
+  else if (rawFacts !== undefined) {
+    claimProblems.push(`claim.claimedFacts is not a plain object (got ${describe(rawFacts)}).`)
+  }
   const stateSupplied = currentState !== undefined && currentState !== null
   if (stateSupplied) assertPlainRecord(currentState, 'currentState')
 
@@ -191,11 +210,15 @@ export function verifyReceipt<Scope = unknown, Authority = unknown, Fact = unkno
     !packetMismatch &&
     unauthorizedActions.length === 0 &&
     droppedEvidenceIds.length === 0 &&
-    contradictions.length === 0
+    contradictions.length === 0 &&
+    claimProblems.length === 0
 
   const reasons: string[] = []
   if (packetMismatch) {
     reasons.push(`Claim answers packet ${quote(claimPacketId)}, not the packet under review (${quote(packetId)}).`)
+  }
+  if (claimProblems.length) {
+    reasons.push(`The claim is malformed, so it cannot be accepted: ${claimProblems.join(' ')}`)
   }
   if (unauthorizedActions.length) {
     reasons.push(`${unauthorizedActions.length} claimed action(s) were never authorized: ${quoteAll(unauthorizedActions)}.`)
@@ -213,6 +236,7 @@ export function verifyReceipt<Scope = unknown, Authority = unknown, Fact = unkno
     droppedEvidenceIds,
     contradictions,
     packetMismatch,
+    claimProblems,
     coverage,
     reason: accepted ? acceptedReason(coverage) : reasons.join(' '),
   }

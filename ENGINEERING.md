@@ -7,13 +7,22 @@
   `packet.evidenceIds`, `claim.packetId !== packet.id`, or a claimed fact
   differs from the same-keyed fact in a supplied `currentState`.
 - Every mismatch is named in the result; all four checks always run.
-- Input it cannot judge throws a `TypeError` instead of being accepted:
-  ids must be non-blank strings; the four lists must be dense arrays of
-  strings; `claimedFacts` and `currentState` must be plain (or null-prototype)
-  objects. Two missing ids never match each other.
-- Every result carries `coverage` (`stateSupplied`, `claimedFactCount`,
-  `comparedFactCount`, `uncheckedFactKeys`). It is additive and never changes
-  `accepted`.
+- The trust boundary decides throw versus reject. The packet and
+  `currentState` come from the caller's own code: a malformed one throws a
+  `TypeError` (`packet.id` must be a non-blank string, the packet's two lists
+  must be dense arrays of strings, `currentState` must be a plain or
+  null-prototype object when given). The claim comes from the agent being
+  checked: a malformed claim is rejected in the result (`accepted: false`,
+  `claimProblems`, `reason`), never thrown and never accepted. That covers a
+  non-string entry, hole or blank string in a claim list, a `claimedFacts` that
+  is not a plain object, and a missing, non-string or blank `claim.packetId`
+  (a `packetMismatch`; two missing ids never match). Kept from 0.1.1, these
+  still throw: a claim that is not an object, and a claim list that is not an
+  array.
+- Every result carries `claimProblems` and `coverage` (`stateSupplied`,
+  `claimedFactCount`, `comparedFactCount`, `uncheckedFactKeys`). Both are
+  additive; `claimProblems` must be empty for `accepted`, `coverage` never
+  changes it.
 - Fact comparison fails closed: values it cannot compare by content (anything
   but primitives, arrays, plain objects, and Dates) only match themselves. The
   same object on both sides matches without being walked, including a
@@ -23,8 +32,9 @@
   mutate its inputs. Each caller field is read once and the result is
   computed from that read. Untrusted strings in `reason` are JSON-quoted with
   control characters, line breaks and bidi formatting characters escaped.
-- `issuePacket` copies its lists from one indexed read and rejects non-array,
-  non-string or sparse lists and a blank `options.id`.
+- `issuePacket` (caller-owned input) copies its lists from one indexed read
+  and throws for non-array, non-string or sparse lists and a blank
+  `options.id`.
 - The trail has no removal API.
 - Zero runtime dependencies. ESM only. Node.js 20 or newer (`engines`); see
   the runtime support policy below.

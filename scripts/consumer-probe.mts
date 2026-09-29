@@ -40,6 +40,7 @@ const state: CurrentState<number> = { cartItemCount: 1 };
 
 const result: ReceiptResult<number> = verifyReceipt(packet, claim, state);
 const accepted: boolean = result.accepted;
+const problems: string[] = result.claimProblems;
 const coverage: ReceiptCoverage = result.coverage;
 const compared: number = coverage.comparedFactCount;
 const unchecked: string[] = coverage.uncheckedFactKeys;
@@ -53,4 +54,4 @@ const entry: RefutationEntry<number> = trail.record(claim, result);
 const found: RefutationEntry<number> | undefined = trail.find(entry.id);
 const all: RefutationEntry<number>[] = trail.list();
 
-export { accepted, all, claimedCount, compared, found, observed, unchecked };
+export { accepted, all, claimedCount, compared, found, observed, problems, unchecked };

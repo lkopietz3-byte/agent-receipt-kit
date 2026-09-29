@@ -165,6 +165,7 @@ const result = verifyReceipt(packet, claim, currentState)
 //   droppedEvidenceIds: [],
 //   contradictions: [],
 //   packetMismatch: false,
+//   claimProblems: [],
 //   coverage: { stateSupplied: true, claimedFactCount: 1, comparedFactCount: 1, uncheckedFactKeys: [] },
 //   reason: "Claim matches the issued packet's authority and evidence and answers
 //            the correct packet. 1 claimed fact(s) agree with the supplied current state."
@@ -221,25 +222,46 @@ How the checks work:
   structured fields keep the exact text. For an accepted claim `reason` says
   how many claimed facts were actually cross-checked. Branch on the
   structured fields, not on this wording.
-- **Input rules.** It throws a `TypeError`, rather than returning a result, for
-  input it cannot judge:
-  - `packet` or `claim` is not an object;
-  - `packet.id` or `claim.packetId` is missing, not a string, or shows
-    nothing (empty, or only whitespace and invisible characters). Before this
-    rule, two missing ids matched each other;
-  - `packet.allowedActions`, `packet.evidenceIds`, `claim.claimedActions` or
-    `claim.citedEvidenceIds` is not an array of strings, or has a hole. The
-    message names the index. A claim that lists a number or a `null` throws;
-    it is not reported as an unauthorized action;
-  - `claim.claimedFacts` is present but is not a plain or null-prototype
-    object (`null`, an array, a `Map`, a class instance and `true` all
-    throw). Leave it out, or pass `undefined`, for a claim with no facts;
-  - `currentState` is anything other than `undefined`, `null`, or a plain or
-    null-prototype object.
+- **Who supplies what decides what happens.** The packet and `currentState`
+  come from your own code, so a malformed one **throws** a `TypeError`. The
+  claim comes from the agent being checked, so a malformed claim is
+  **rejected in the result**: `accepted` is `false`, `claimProblems` and
+  `reason` say what is wrong, and nothing is thrown.
 
-  Each field is read once and the result is computed from what was read, so a
-  getter that changes its answer cannot pass validation and then be judged on
-  something else. It does not mutate its inputs and reads no clock.
+  Throws a `TypeError` (your code passed something it should not have):
+  - `packet` is not an object, or `packet.id` is missing, not a string, or
+    shows nothing (empty, or only whitespace and invisible characters). Before
+    0.2.0, two missing ids matched each other;
+  - `packet.allowedActions` or `packet.evidenceIds` is not an array of
+    strings, or has a hole. The message names the index;
+  - `currentState` is anything other than `undefined`, `null`, or a plain or
+    null-prototype object (an array, a `Map` or a class instance throws).
+
+  Still throws, as in 0.1.1 (the claim as a whole is unusable, so there is
+  nothing to reject entry by entry):
+  - `claim` is not an object (`null`, `undefined`, a number, a string, an
+    array);
+  - `claim.claimedActions` or `claim.citedEvidenceIds` is missing or is not an
+    array.
+
+  Rejected, never thrown and never accepted (`claimProblems` names each one):
+  - a non-string entry in `claimedActions` or `citedEvidenceIds`
+    (`claim.claimedActions[0] is not a string (got number).`), a hole in
+    either list, or a blank string (empty, or only whitespace and invisible
+    characters). Non-string entries are not copied into
+    `unauthorizedActions`; the string entries around them are still checked.
+    A list reports at most 20 problems plus one line counting the rest;
+  - `claimedFacts` that is present but not a plain or null-prototype object
+    (`null`, an array, a `Map`, a class instance, `true`). Its facts are not
+    counted in `coverage`;
+  - a missing, non-string or blank `claim.packetId`. It is a `packetMismatch`,
+    because it can never equal a packet's id.
+
+  `claimProblems` never repeats the claim's content, only field names, indexes
+  and kinds of value. Each field is read once and the result is computed from
+  what was read, so a getter that changes its answer cannot pass validation and
+  then be judged on something else. It does not mutate its inputs and reads no
+  clock.
 - **Circular and very deep facts.** Two references to the very same object are
   equal without being walked, so one circular object passed on both sides
   matches. Two separate circular values, and two separate acyclic values
@@ -272,10 +294,11 @@ trail.list() // every retained entry, oldest first (a copy of the array)
 
 - `record(claim, result, recordedAt?)` stores both objects by reference and
   returns the entry. Entry ids look like `refute-<sequence>-<recordedAt>` and
-  are unique within one trail. `claim` and `result` must be objects, `claim.packetId`
-  must be a non-blank string, and `recordedAt`, when given, must be a non-blank
-  string (all `TypeError` otherwise). It does not check that the result belongs
-  to the claim.
+  are unique within one trail. `claim` and `result` must be objects and
+  `recordedAt`, when given, must be a non-blank string (`TypeError` otherwise).
+  `packetId` is copied from the claim as given, so a rejected claim with no
+  usable `packetId` is still recorded. It does not check that the result
+  belongs to the claim.
 - There is no `remove` or `delete`. Pruning history is a decision for your
   own storage layer.
 
@@ -289,7 +312,7 @@ trail.list() // every retained entry, oldest first (a copy of the array)
 | `CurrentState<Fact>` | Your observation: a record of fact key to value. |
 | `Contradiction<Fact>` | `key`, `claimedFact`, `currentFact` for one disagreeing fact. |
 | `ReceiptCoverage` | `stateSupplied`, `claimedFactCount`, `comparedFactCount`, `uncheckedFactKeys`. |
-| `ReceiptResult<Fact>` | `accepted`, `unauthorizedActions`, `droppedEvidenceIds`, `contradictions`, `packetMismatch`, `coverage`, `reason`. |
+| `ReceiptResult<Fact>` | `accepted`, `unauthorizedActions`, `droppedEvidenceIds`, `contradictions`, `packetMismatch`, `claimProblems`, `coverage`, `reason`. |
 | `RefutationEntry<Fact>` | `id`, `packetId`, `claim`, `result`, `recordedAt`. |
 | `RefutationTrail<Fact>` | `record`, `list`, `find`. |
 

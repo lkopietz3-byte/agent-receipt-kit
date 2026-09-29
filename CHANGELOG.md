@@ -6,55 +6,82 @@ All notable changes to this project are documented here. The format follows
 
 ## [0.2.0] - 2026-09-28
 
-Minor release: input that used to be accepted now throws, and every result gains
-a `coverage` object. The four mismatch fields, `accepted`, the export names and
-the valid-input results are unchanged, except that `reason` now escapes bidi
-formatting characters.
+Minor release: malformed input that used to be accepted is now thrown or
+rejected, and every result gains `claimProblems` and `coverage`. The four
+mismatch fields, the meaning of `accepted` for well-formed claims, the export
+names and the valid-input results are unchanged, except that `reason` now
+escapes bidi formatting characters.
+
+**The rule:** the packet and `currentState` come from your own code, so a
+malformed one **throws** a `TypeError`. The claim comes from the agent being
+checked, so a malformed claim is **rejected in the result** (`accepted: false`,
+`claimProblems`, `reason`), never thrown and never accepted. Two cases keep
+0.1.1's throw: a claim that is not an object, and a claim list that is not an
+array.
 
 ### Changed (breaking)
 
-- **Ids must be present strings that show something (ARK-001, OBS-01).**
-  `packet.id` and `claim.packetId` that are missing, not strings, empty,
-  whitespace-only or invisible-only (zero-width, bidi controls, soft hyphen)
-  throw a `TypeError`. Before, two missing ids matched each other and
-  `verifyReceipt` returned `accepted: true`. `issuePacket` applies the same rule
-  to `options.id` and `options.issuedAt` when given (`null` used to mean "use
-  the default"; only `undefined` does now) and requires `options` to be a plain
-  object.
-- **The four lists must be dense arrays of strings (ARK-001, OBS-02, OBS-04).**
-  `packet.allowedActions`, `packet.evidenceIds`, `claim.claimedActions` and
-  `claim.citedEvidenceIds` throw a `TypeError` naming the index for a
-  non-string entry or a hole. Before, a numeric action present on both sides
-  matched, and a hole in a claim list was skipped and accepted. A non-string
-  entry in a claim list used to be reported as unauthorized or dropped; it now
-  throws.
-- **Fact containers must be plain objects (ARK-001, OBS-03).** `claimedFacts`,
-  when present, and `currentState`, when not `undefined` or `null`, must be a
-  plain or null-prototype object. `true`, `null` (for `claimedFacts`), an
-  array, a `Map`, a `Date` or a class instance throws a `TypeError`. Before,
-  `claimedFacts: true` or a `Map` was read as zero facts and accepted, and a
-  `Map` as `currentState` left every fact unchecked. A plain object from another
-  realm is accepted.
-- **`claim` and `result` given to `trail.record` must be objects, `claim.packetId`
-  a non-blank string and `recordedAt`, when given, a non-blank string** (all
-  `TypeError`). A failed call no longer uses up a sequence number.
-- **Each caller field is read once.** `verifyReceipt` reads `packet.id`, the two
-  packet lists, `claim.packetId`, the two claim lists and `claim.claimedFacts`
-  once, and computes from that read; `issuePacket` copies each list from one
-  indexed read. Before, a getter or proxy could pass validation with one value
-  and be judged on another.
+- **A malformed packet throws (ARK-001, OBS-01, OBS-02).** `packet.id` that is
+  missing, not a string, empty, whitespace-only or invisible-only (zero-width,
+  bidi controls, soft hyphen) throws a `TypeError`. `packet.allowedActions` and
+  `packet.evidenceIds` must be arrays of strings with no holes; a non-string
+  entry or hole throws, naming the index. Before, two missing ids matched each
+  other and a numeric action present in both a stored packet and a claim
+  matched, both returning `accepted: true`. `issuePacket` applies the same
+  rules to its lists and to `options.id` and `options.issuedAt` when given
+  (`null` used to mean "use the default"; only `undefined` does now), and
+  requires `options` to be a plain object.
+- **`currentState` must be a plain object (ARK-001, OBS-03).** Anything other
+  than `undefined`, `null` (both still mean "no observation"), or a plain or
+  null-prototype object throws a `TypeError`. Before, a `Map` or a `Date` was
+  read as an empty observation and left every fact unchecked.
+- **A malformed claim is rejected, with a reason (ARK-001, OBS-03, OBS-04).**
+  Each of these now gives `accepted: false` and a sentence in `claimProblems`
+  and `reason`, and none throws:
+  - a non-string entry in `claimedActions` or `citedEvidenceIds`
+    (`claim.claimedActions[0] is not a string (got number).`). It used to be
+    copied into `unauthorizedActions` or `droppedEvidenceIds`; it no longer is,
+    and the string entries around it are still checked;
+  - a hole in either list (a run of holes is one problem). Before,
+    `filter()` skipped holes, so a sparse list could be accepted;
+  - a blank string in either list, even one the packet also lists;
+  - `claimedFacts` that is present but is not a plain or null-prototype object
+    (`true`, `null`, an array, a `Map`, a class instance). Before, `true` or a
+    `Map` was read as zero facts and accepted. Its facts are not counted in
+    `coverage`;
+  - a missing, non-string or blank `claim.packetId`: a `packetMismatch`, as in
+    0.1.1 for a non-string id (the reason shows `<number>`, never the content).
+  `claimProblems` names fields, indexes and kinds of value, never the claim's
+  content, and lists at most 20 problems per list plus one line counting the
+  rest. An enormous sparse array is scanned in time proportional to what is
+  present, not to its length.
+- **Kept from 0.1.1:** `verifyReceipt` still throws a `TypeError` for a claim
+  that is not an object and for a `claimedActions` or `citedEvidenceIds` that
+  is missing or not an array.
+- **`trail.record` checks its own arguments.** `claim` and `result` must be
+  objects, and `recordedAt`, when given, a non-blank string (`TypeError`). A
+  failed call no longer uses up a sequence number. `packetId` is still copied
+  from the claim as given, so a rejected claim with no usable `packetId` is
+  recorded.
+- **Each caller field is read once.** `verifyReceipt` reads `packet.id`, the
+  two packet lists, `claim.packetId`, the two claim lists and
+  `claim.claimedFacts` once, and computes from that read; `issuePacket` copies
+  each list from one indexed read. Before, a getter or proxy could pass
+  validation with one value and be judged on another.
 - **`reason` escapes bidirectional formatting characters** (U+061C, U+200E,
   U+200F, U+202A to U+202E, U+2066 to U+2069) as `\uXXXX`, in addition to the
   control characters, line breaks and U+2028/U+2029 it already escaped. The
   structured fields keep the exact text.
 - **A plain object from another realm counts as plain** when comparing facts
   (its prototype's prototype is `null`), where before it only matched itself.
-- TypeScript: `ReceiptResult` has a required `coverage` field, so code that
-  builds a `ReceiptResult` by hand must add it, and code that compares a whole
-  result with `toEqual` sees one more key.
+- TypeScript: `ReceiptResult` has required `claimProblems` and `coverage`
+  fields, so code that builds a `ReceiptResult` by hand must add them, and code
+  that compares a whole result with `toEqual` sees two more keys.
 
 ### Added
 
+- **`result.claimProblems`**: `string[]`, empty for a well-formed claim, present
+  on every result. `accepted` requires it to be empty.
 - **`result.coverage` (ARK-004)** on every result, accepted or rejected:
   `{ stateSupplied, claimedFactCount, comparedFactCount, uncheckedFactKeys }`.
   A contradicted fact counts as compared, so agreements are
@@ -73,18 +100,18 @@ formatting characters.
   claimed circular structures always overflow. Two references to the same
   object match without being walked (so one cyclic object on both sides
   matches); separate cycles, and separate acyclic values nested past the
-  runtime's stack, throw a `RangeError`. Both are now documented and tested, with
-  the depth stated as runtime-dependent.
+  runtime's stack, throw a `RangeError`. Both are now documented and tested,
+  with the depth stated as runtime-dependent.
 - **Sibling-kit wording (ARK-003).** The README and the 0.1.1 entry below said
-  `audit-chain-kit` gives durability across restarts. It does not: its chains are
-  in-memory, storage and writer coordination are the caller's, and catching a
-  rewrite needs an anchor kept outside the writer's control.
+  `audit-chain-kit` gives durability across restarts. It does not: its chains
+  are in-memory, storage and writer coordination are the caller's, and catching
+  a rewrite needs an anchor kept outside the writer's control.
 - The `PROJECT_CONTEXT.md` purpose line no longer says the kit checks work
   against a "fresh independent observation"; it compares a report with
-  caller-supplied data and cannot tell whether that data is fresh or independent.
+  caller-supplied data and cannot tell whether that data is fresh or
+  independent.
 - Mutation testing (Stryker, run locally, not committed): 95.4% before, 100%
-  after (301 killed, 0 survived). Line, branch, function and statement coverage
-  is 100%.
+  after. Line, branch, function and statement coverage is 100%.
 
 ## [0.1.1] - 2026-09-27
 

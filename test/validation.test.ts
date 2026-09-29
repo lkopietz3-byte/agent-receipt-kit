@@ -88,16 +88,4 @@ describe('verifyReceipt input checks', () => {
       new TypeError('claim must be an object (got number).'),
     )
   })
-
-  it('treats a non-string entry in a claim as unauthorized rather than throwing', () => {
-    const result = verifyReceipt(packet, {
-      ...claim,
-      claimedActions: ['log-in', 7 as unknown as string],
-      citedEvidenceIds: [{} as unknown as string],
-    })
-    expect(result.accepted).toBe(false)
-    expect(result.unauthorizedActions).toEqual([7])
-    expect(result.droppedEvidenceIds).toEqual([{}])
-    expect(result.reason).toContain('never authorized: <number>.')
-  })
 })

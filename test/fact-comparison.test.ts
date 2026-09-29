@@ -111,3 +111,105 @@ describe('fact comparison: values that are not plain JSON', () => {
     expectMatch([, 1], [, 1])
   })
 })
+
+describe('fact comparison: mixed kinds never match', () => {
+  it('reports a contradiction, not a crash, when undefined meets an object or the reverse', () => {
+    expectContradiction(undefined, {})
+    expectContradiction({}, undefined)
+    expectContradiction(undefined, [])
+    expectContradiction(undefined, null)
+    expectMatch(undefined, undefined)
+  })
+
+  it('reports a contradiction when a Date meets a plain object, in either order', () => {
+    expectContradiction(new Date(0), {})
+    expectContradiction({}, new Date(0))
+    expectContradiction(new Date(0), { getTime: 0 })
+  })
+
+  it('reports a contradiction when an array meets a plain object or the reverse', () => {
+    expectContradiction([], {})
+    expectContradiction({}, [])
+    expectContradiction({ 0: 'a', length: 1 }, ['a'])
+    expectContradiction(['a'], { 0: 'a' })
+  })
+
+  it('reports a contradiction when arrays differ in length, whichever is longer', () => {
+    expectContradiction([1], [1, 2])
+    expectContradiction([1, 2], [1])
+    expectMatch([1, 2], [1, 2])
+  })
+
+  it('reports a contradiction when null meets an object, in either order, and when an object meets a primitive', () => {
+    expectContradiction(null, {})
+    expectContradiction({}, null)
+    expectContradiction([], null)
+    expectContradiction({ a: 1 }, 'a')
+    expectContradiction('a', { a: 1 })
+    expectContradiction(1, [1])
+  })
+
+  it('reports a contradiction when two plain objects have the same number of keys but different names', () => {
+    expectContradiction({ a: 1 }, { b: 1 })
+    expectContradiction({ a: 1, b: 2 }, { a: 1 })
+    expectContradiction({ a: 1 }, { a: 1, b: 2 })
+  })
+
+  it('reports a contradiction when two Dates hold different times, and never treats an invalid date as an ordinary one', () => {
+    expectContradiction(new Date(0), new Date(1))
+    expectMatch(new Date(Number.NaN), new Date(Number.NaN))
+    expectContradiction(new Date(Number.NaN), new Date(0))
+  })
+})
+
+// ARK-005: what circular and very deep facts do. Nothing here is ever a
+// quiet acceptance of two different structures.
+describe('fact comparison: circular and deep structures', () => {
+  it('accepts the very same object on both sides, cycle or not, because a reference is equal to itself', () => {
+    const cycle: Record<string, unknown> = {}
+    cycle.self = cycle
+    expectMatch(cycle, cycle)
+    expectMatch({ inner: cycle }, { inner: cycle })
+    const list: unknown[] = []
+    list.push(list)
+    expectMatch(list, list)
+  })
+
+  it('throws a RangeError for two separate cycles instead of accepting or rejecting them', () => {
+    const first: Record<string, unknown> = {}
+    first.self = first
+    const second: Record<string, unknown> = {}
+    second.self = second
+    expect(() => compare(first, second)).toThrow(RangeError)
+    const firstList: unknown[] = []
+    firstList.push(firstList)
+    const secondList: unknown[] = []
+    secondList.push(secondList)
+    expect(() => compare(firstList, secondList)).toThrow(RangeError)
+  })
+
+  it('throws a RangeError for two separate, acyclic values nested far deeper than the stack allows', () => {
+    const nest = (depth: number): unknown => {
+      let value: unknown = 1
+      for (let level = 0; level < depth; level += 1) value = { value }
+      return value
+    }
+    expect(() => compare(nest(200_000), nest(200_000))).toThrow(RangeError)
+  })
+
+  it('compares the same deeply nested object by reference without recursing', () => {
+    let value: unknown = 1
+    for (let level = 0; level < 200_000; level += 1) value = { value }
+    expectMatch(value, value)
+  })
+
+  it('compares moderately nested values by content', () => {
+    const nest = (leaf: number): unknown => {
+      let value: unknown = leaf
+      for (let level = 0; level < 200; level += 1) value = { value }
+      return value
+    }
+    expectMatch(nest(1), nest(1))
+    expectContradiction(nest(1), nest(2))
+  })
+})

@@ -31,6 +31,22 @@ const ok = verifyReceipt(packet, claim, { cartItemCount: 1, shippedAt: new Date(
 assert.equal(ok.accepted, true);
 assert.equal(ok.reason, "Claim matches the issued packet's authority and evidence and answers the correct packet. 2 claimed fact(s) agree with the supplied current state.");
 
+assert.deepEqual(ok.coverage, {
+  stateSupplied: true,
+  claimedFactCount: 2,
+  comparedFactCount: 2,
+  uncheckedFactKeys: [],
+});
+
+const unobserved = verifyReceipt(packet, claim);
+assert.equal(unobserved.accepted, true);
+assert.deepEqual(unobserved.coverage, {
+  stateSupplied: false,
+  claimedFactCount: 2,
+  comparedFactCount: 0,
+  uncheckedFactKeys: ['cartItemCount', 'shippedAt'],
+});
+
 const bad = verifyReceipt(
   packet,
   { ...claim, packetId: 'pkt-other', claimedActions: ['submit-payment'], citedEvidenceIds: ['screenshot-99'] },
@@ -42,6 +58,34 @@ assert.deepEqual(bad.unauthorizedActions, ['submit-payment']);
 assert.deepEqual(bad.droppedEvidenceIds, ['screenshot-99']);
 assert.deepEqual(bad.contradictions.map((item) => item.key), ['cartItemCount', 'shippedAt']);
 assert.ok(bad.reason.includes('never authorized: "submit-payment".'));
+assert.deepEqual(bad.coverage, { stateSupplied: true, claimedFactCount: 2, comparedFactCount: 2, uncheckedFactKeys: [] });
+
+// A malformed packet or current state (your own code's input) throws.
+assert.throws(() => verifyReceipt({ allowedActions: [], evidenceIds: [] }, { packetId: 'x', claimedActions: [], citedEvidenceIds: [] }), {
+  name: 'TypeError',
+  message: 'packet.id must be a non-empty string (got undefined).',
+});
+assert.throws(() => verifyReceipt(packet, claim, new Map()), {
+  name: 'TypeError',
+  message: 'currentState must be a plain object (got a non-plain object).',
+});
+assert.throws(() => verifyReceipt(packet, null), { name: 'TypeError', message: 'claim must be an object (got null).' });
+
+// A malformed claim comes from the agent: it is rejected with a reason, never thrown or accepted.
+const badFacts = verifyReceipt(packet, { ...claim, claimedFacts: true });
+assert.equal(badFacts.accepted, false);
+assert.deepEqual(badFacts.claimProblems, ['claim.claimedFacts is not a plain object (got boolean).']);
+const sparse = new Array(3);
+sparse[0] = 'log-in';
+sparse[2] = 'log-in';
+const holey = verifyReceipt(packet, { ...claim, claimedActions: sparse });
+assert.equal(holey.accepted, false);
+assert.deepEqual(holey.claimProblems, ['claim.claimedActions[1] is missing (the array has a hole).']);
+const numeric = verifyReceipt(packet, { ...claim, claimedActions: [7] });
+assert.equal(numeric.accepted, false);
+assert.deepEqual(numeric.claimProblems, ['claim.claimedActions[0] is not a string (got number).']);
+assert.deepEqual(numeric.unauthorizedActions, []);
+assert.deepEqual(ok.claimProblems, []);
 
 assert.throws(() => issuePacket({}, 'local', 'log-in', []), {
   name: 'TypeError',

@@ -119,6 +119,8 @@ describe('verifyReceipt', () => {
       droppedEvidenceIds: [],
       contradictions: [],
       packetMismatch: false,
+      claimProblems: [],
+      coverage: { stateSupplied: true, claimedFactCount: 1, comparedFactCount: 1, uncheckedFactKeys: [] },
     })
     expect(reason).toContain('matches the issued packet')
   })

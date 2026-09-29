@@ -1,5 +1,12 @@
 import type { AuthorityLevel, WorkPacket } from './types.js'
-import { assertStringArray } from './validate.js'
+import { assertId, assertPlainRecord, snapshotStringArray } from './validate.js'
+
+/** `fallback()` for `undefined`; otherwise `value`, which must be a non-blank string. */
+function optionalId(value: unknown, label: string, fallback: () => string): string {
+  if (value === undefined) return fallback()
+  assertId(value, label)
+  return value
+}
 
 /**
  * Generates a packet id with zero runtime dependencies. Uses
@@ -33,17 +40,22 @@ function generatePacketId(): string {
  * @param evidenceIds Ids of evidence/references the agent may cite in
  *   support of a claim.
  * @param options.id Override the generated packet id (useful for tests or
- *   idempotency keys). Optional; stored as given.
+ *   idempotency keys). Optional. Only `undefined` means "generate one"; any
+ *   other value must be a string that shows something (not empty, not only
+ *   whitespace or invisible characters). Stored as given.
  * @param options.issuedAt Override the generated issuedAt timestamp.
- *   Optional; defaults to `new Date().toISOString()`. Stored as given, not
- *   validated.
- * @returns A new WorkPacket. allowedActions and evidenceIds are shallow
- *   copies, so later edits to the input arrays do not change the packet;
- *   scope is stored by reference. The packet itself is a plain mutable
- *   object.
- * @throws TypeError if allowedActions or evidenceIds is not an array of
- *   strings. (A string would otherwise be spread into single characters and
- *   authorize them.)
+ *   Optional; defaults to `new Date().toISOString()`. Only `undefined` means
+ *   "use the clock"; any other value must be a non-blank string. It is
+ *   stored as given and is not checked to be a date.
+ * @returns A new WorkPacket. allowedActions and evidenceIds are copies made
+ *   from a single read of each input, so later edits to the input arrays do
+ *   not change the packet; scope is stored by reference. The packet itself is
+ *   a plain mutable object.
+ * @throws TypeError if allowedActions or evidenceIds is not an array whose
+ *   every position holds a string (a string would otherwise be spread into
+ *   single characters and authorize them; a hole is refused), if `options`
+ *   is not a plain object, or if `options.id` or `options.issuedAt` is given
+ *   but is not a non-blank string.
  */
 export function issuePacket<Scope = unknown, Authority = AuthorityLevel>(
   scope: Scope,
@@ -52,14 +64,10 @@ export function issuePacket<Scope = unknown, Authority = AuthorityLevel>(
   evidenceIds: string[],
   options: { id?: string; issuedAt?: string } = {},
 ): WorkPacket<Scope, Authority> {
-  assertStringArray(allowedActions, 'allowedActions')
-  assertStringArray(evidenceIds, 'evidenceIds')
-  return {
-    id: options.id ?? generatePacketId(),
-    issuedAt: options.issuedAt ?? new Date().toISOString(),
-    scope,
-    authorityLevel,
-    allowedActions: [...allowedActions],
-    evidenceIds: [...evidenceIds],
-  }
+  const actions = snapshotStringArray(allowedActions, 'allowedActions')
+  const evidence = snapshotStringArray(evidenceIds, 'evidenceIds')
+  assertPlainRecord(options, 'options')
+  const id = optionalId(options.id, 'options.id', generatePacketId)
+  const issuedAt = optionalId(options.issuedAt, 'options.issuedAt', () => new Date().toISOString())
+  return { id, issuedAt, scope, authorityLevel, allowedActions: actions, evidenceIds: evidence }
 }

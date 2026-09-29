@@ -9,6 +9,7 @@ import {
   type AuthorityLevel,
   type Contradiction,
   type CurrentState,
+  type ReceiptCoverage,
   type ReceiptResult,
   type RefutationEntry,
   type RefutationTrail,
@@ -39,6 +40,11 @@ const state: CurrentState<number> = { cartItemCount: 1 };
 
 const result: ReceiptResult<number> = verifyReceipt(packet, claim, state);
 const accepted: boolean = result.accepted;
+const problems: string[] = result.claimProblems;
+const coverage: ReceiptCoverage = result.coverage;
+const compared: number = coverage.comparedFactCount;
+const unchecked: string[] = coverage.uncheckedFactKeys;
+const observed: boolean = coverage.stateSupplied;
 const firstContradiction: Contradiction<number> | undefined = result.contradictions[0];
 const claimedCount: number | undefined = firstContradiction?.claimedFact;
 verifyReceipt(tiered, claim);
@@ -48,4 +54,4 @@ const entry: RefutationEntry<number> = trail.record(claim, result);
 const found: RefutationEntry<number> | undefined = trail.find(entry.id);
 const all: RefutationEntry<number>[] = trail.list();
 
-export { accepted, all, claimedCount, found };
+export { accepted, all, claimedCount, compared, found, observed, problems, unchecked };

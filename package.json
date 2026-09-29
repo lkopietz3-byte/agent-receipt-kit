@@ -1,6 +1,6 @@
 {
   "name": "agent-receipt-kit",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Dependency-free TypeScript checks that compare an AI agent's report with the actions and evidence ids it was issued and with a caller-supplied observation.",
   "keywords": [
     "ai-agent",

@@ -48,19 +48,67 @@ describe('verifyReceipt reason text', () => {
     expect(result.contradictions[0]?.key).toBe(`fact${forged}`)
   })
 
+  it.each([
+    ['U+202A left-to-right embedding', '\u202A', '\\u202a'],
+    ['U+202B right-to-left embedding', '\u202B', '\\u202b'],
+    ['U+202C pop directional formatting', '\u202C', '\\u202c'],
+    ['U+202D left-to-right override', '\u202D', '\\u202d'],
+    ['U+202E right-to-left override', '\u202E', '\\u202e'],
+    ['U+2066 left-to-right isolate', '\u2066', '\\u2066'],
+    ['U+2067 right-to-left isolate', '\u2067', '\\u2067'],
+    ['U+2068 first strong isolate', '\u2068', '\\u2068'],
+    ['U+2069 pop directional isolate', '\u2069', '\\u2069'],
+    ['U+200E left-to-right mark', '\u200E', '\\u200e'],
+    ['U+200F right-to-left mark', '\u200F', '\\u200f'],
+    ['U+061C Arabic letter mark', '\u061C', '\\u061c'],
+  ])('escapes the bidirectional control %s so an id cannot reorder the log line', (_name, control, escaped) => {
+    const result = verifyReceipt(
+      packet,
+      {
+        packetId: `other${control}`,
+        claimedActions: [`act${control}ion`],
+        citedEvidenceIds: [`ev${control}`],
+        claimedFacts: { [`key${control}`]: 1 },
+      },
+      { [`key${control}`]: 2 },
+    )
+    expect(result.reason).not.toContain(control)
+    expect(result.reason).toContain(`"act${escaped}ion"`)
+    expect(result.reason).toContain(`"ev${escaped}"`)
+    expect(result.reason).toContain(`"other${escaped}"`)
+    expect(result.reason).toContain(`"key${escaped}"`)
+    // The structured fields keep the raw text.
+    expect(result.unauthorizedActions).toEqual([`act${control}ion`])
+    expect(result.contradictions[0]?.key).toBe(`key${control}`)
+  })
+
+  it('escapes terminal escape sequences and other control characters', () => {
+    const result = verifyReceipt(packet, {
+      packetId: 'pkt-reason',
+      claimedActions: ['\u001b[31mred\u001b[0m', 'bell\u0007', 'nul\u0000', 'del\u007f', 'csi\u009b31m'],
+      citedEvidenceIds: [],
+    })
+    // eslint-disable-next-line no-control-regex -- the point of the test is that none survive
+    expect(result.reason).not.toMatch(/[\u0000-\u001f\u007f-\u009f]/u)
+    expect(result.reason).toContain('"\\u001b[31mred\\u001b[0m"')
+    expect(result.reason).toContain('"bell\\u0007"')
+    expect(result.reason).toContain('"nul\\u0000"')
+    expect(result.reason).toContain('"del\\u007f"')
+    expect(result.reason).toContain('"csi\\u009b31m"')
+  })
+
+  it('leaves ordinary text, non-ASCII letters and emoji readable', () => {
+    const result = verifyReceipt(packet, {
+      packetId: 'pkt-reason',
+      claimedActions: ['envoyer-café', '削除', '👩‍💻'],
+      citedEvidenceIds: [],
+    })
+    expect(result.reason).toContain('"envoyer-café", "削除", "👩‍💻"')
+  })
+
   it('names the packet under review and the packet the claim answers', () => {
     const result = verifyReceipt(packet, { packetId: 'pkt-other', claimedActions: [], citedEvidenceIds: [] })
     expect(result.reason).toBe('Claim answers packet "pkt-other", not the packet under review ("pkt-reason").')
-  })
-
-  it('names the type, not the value, of a packet id that is not a string', () => {
-    const result = verifyReceipt(packet, {
-      packetId: 42 as unknown as string,
-      claimedActions: [],
-      citedEvidenceIds: [],
-    })
-    expect(result.packetMismatch).toBe(true)
-    expect(result.reason).toBe('Claim answers packet <number>, not the packet under review ("pkt-reason").')
   })
 
   describe('when the claim is accepted', () => {
@@ -103,6 +151,22 @@ describe('verifyReceipt reason text', () => {
       const result = verifyReceipt(packet, { ...accepted, claimedFacts: { loggedIn: true } }, { loggedIn: true, extra: 1 })
       expect(result.reason).toBe(`${base} 1 claimed fact(s) agree with the supplied current state.`)
     })
+  })
+
+  it('says only what failed when a single check fails', () => {
+    const base = { packetId: 'pkt-reason', claimedActions: ['log-in'], citedEvidenceIds: ['screenshot-1'] }
+    expect(verifyReceipt(packet, { ...base, claimedActions: ['wipe-disk'] }).reason).toBe(
+      '1 claimed action(s) were never authorized: "wipe-disk".',
+    )
+    expect(verifyReceipt(packet, { ...base, citedEvidenceIds: ['made-up'] }).reason).toBe(
+      '1 cited evidence id(s) were not part of the issued packet: "made-up".',
+    )
+    expect(verifyReceipt(packet, { ...base, packetId: 'pkt-other' }).reason).toBe(
+      'Claim answers packet "pkt-other", not the packet under review ("pkt-reason").',
+    )
+    expect(verifyReceipt(packet, { ...base, claimedFacts: { status: 'done' } }, { status: 'failed' }).reason).toBe(
+      '1 claimed fact(s) contradict the supplied current state: "status".',
+    )
   })
 
   it('lists every failed check, in a fixed order', () => {

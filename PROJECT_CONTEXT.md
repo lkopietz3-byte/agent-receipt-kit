@@ -5,7 +5,7 @@ Mapped on **2026-09-26** from connected GitHub, Vercel, and Supabase metadata. T
 ## Identity and repository settings
 
 - Repository: [lkopietz3-byte/agent-receipt-kit](https://github.com/lkopietz3-byte/agent-receipt-kit)
-- Purpose: A library for checking an AI agent’s claimed work against its authorization and, when available, a fresh independent observation.
+- Purpose: A dependency-free TypeScript library that compares an AI agent’s report with the actions and evidence ids it was issued and, optionally, with an observation the caller supplies. It does not check that the report is true or that the observation is fresh or independent (see the README’s “Honest limits”).
 - GitHub visibility: **public**; default branch: **`main`**; archived: **no**.
 - Product stage, owner, production health, and GitHub protection/settings beyond the fields above: **not verified**.
 

@@ -4,6 +4,7 @@ export type {
   AgentClaim,
   CurrentState,
   Contradiction,
+  ReceiptCoverage,
   ReceiptResult,
 } from './types.js'
 

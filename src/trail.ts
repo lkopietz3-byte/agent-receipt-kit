@@ -1,4 +1,5 @@
 import type { AgentClaim, ReceiptResult } from './types.js'
+import { assertId, assertObject } from './validate.js'
 
 /**
  * One retained record of a claim, typically one that verifyReceipt did not
@@ -9,7 +10,11 @@ import type { AgentClaim, ReceiptResult } from './types.js'
 export interface RefutationEntry<Fact = unknown> {
   /** `refute-<sequence>-<recordedAt>`; unique within one trail. */
   id: string
-  /** Copied from claim.packetId at record time. */
+  /**
+   * Copied from claim.packetId at record time, as given. A claim whose packetId
+   * was missing or not a string (which verifyReceipt rejects) is recorded too,
+   * so at runtime this can be `undefined` or another non-string.
+   */
   packetId: string
   /** The claim as passed to record(): the same object reference, not a copy. */
   claim: AgentClaim<Fact>
@@ -50,13 +55,20 @@ export function createRefutationTrail<Fact = unknown>(): RefutationTrail<Fact> {
   let sequence = 0
 
   return {
-    record(claim, result, recordedAt = new Date().toISOString()) {
+    record(claim, result, recordedAt) {
+      assertObject(claim, 'claim')
+      assertObject(result, 'result')
+      // Read once and stored as given: verifyReceipt rejects a claim with a
+      // missing or non-string packetId, and the trail keeps rejections.
+      const packetId = claim.packetId
+      const when: unknown = recordedAt === undefined ? new Date().toISOString() : recordedAt
+      assertId(when, 'recordedAt')
       const entry: RefutationEntry<Fact> = {
-        id: `refute-${sequence++}-${recordedAt}`,
-        packetId: claim.packetId,
+        id: `refute-${sequence++}-${when}`,
+        packetId,
         claim,
         result,
-        recordedAt,
+        recordedAt: when,
       }
       entries.push(entry)
       return entry

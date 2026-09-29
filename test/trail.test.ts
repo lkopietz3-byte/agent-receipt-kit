@@ -41,8 +41,10 @@ describe('createRefutationTrail', () => {
     const second = trail.record(refuted('b').claim, refuted('b').result, 'same')
 
     expect(first.id).not.toBe(second.id)
+    expect([first.id, second.id]).toEqual(['refute-0-same', 'refute-1-same'])
     expect(trail.list().map((entry) => entry.id)).toEqual([first.id, second.id])
     expect(trail.find(second.id)).toBe(second)
+    expect(trail.record(refuted('c').claim, refuted('c').result, 'same').id).toBe('refute-2-same')
   })
 
   it('defaults recordedAt to the current ISO time', () => {

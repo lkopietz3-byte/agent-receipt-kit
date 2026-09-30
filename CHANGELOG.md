@@ -43,7 +43,13 @@ array.
     copied into `unauthorizedActions` or `droppedEvidenceIds`; it no longer is,
     and the string entries around it are still checked;
   - a hole in either list (a run of holes is one problem). Before,
-    `filter()` skipped holes, so a sparse list could be accepted;
+    `filter()` skipped holes, so a sparse list could be accepted. Only
+    canonical index keys (`String(Number(key)) === key`, below `length`) count
+    as elements: an own `"00"` key used to be read as index 0, so a hole at
+    `[0]` filled from the prototype was accepted;
+  - a list whose `length` is not a non-negative safe integer (a Proxy over an
+    array can report `NaN`), which used to be read as empty and accepted:
+    `claim.claimedActions has a length that is not a non-negative safe integer.`;
   - a blank string in either list, even one the packet also lists;
   - `claimedFacts` that is present but is not a plain or null-prototype object
     (`true`, `null`, an array, a `Map`, a class instance). Before, `true` or a

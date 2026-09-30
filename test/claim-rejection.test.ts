@@ -177,6 +177,45 @@ describe('element problems in claim lists reject the claim and never throw', () 
     expect(oneOver.claimProblems[20]).toBe('claim.claimedActions has 1 more problem that is not listed.')
   })
 
+  it('does not treat a non-canonical key such as "00" as index 0 (a hole at [0] stays a hole)', () => {
+    // "00" coerces to 0 through Number(), but it is not an array index. The
+    // prototype fills [0] on a plain read, so a coerced key would hide the hole.
+    const fill = Object.assign(Object.create(Array.prototype) as object, { 0: 'log-in' })
+    const holeAtZero = new Array<unknown>(2)
+    holeAtZero[1] = 'log-in'
+    Object.assign(holeAtZero, { '00': 'x' })
+    Object.setPrototypeOf(holeAtZero, fill)
+    const result = verify({ ...good, claimedActions: holeAtZero })
+    expect(result.accepted).toBe(false)
+    expect(result.claimProblems).toEqual(['claim.claimedActions[0] is missing (the array has a hole).'])
+    for (const key of ['0.0', '+0', ' 0', '0x0', '1e0']) {
+      const tagged = Object.assign(['log-in'], { [key]: 'wipe-disk' })
+      const second = verify({ ...good, claimedActions: tagged })
+      expect(second.accepted).toBe(true)
+      expect(second.unauthorizedActions).toEqual([])
+    }
+  })
+
+  it('rejects a proxy array whose length is not a non-negative safe integer, and never throws', () => {
+    const withLength = (length: unknown): unknown =>
+      new Proxy(['wipe-disk'], {
+        get: (target, key): unknown => (key === 'length' ? length : Reflect.get(target, key)),
+      })
+    for (const length of [Number.NaN, -1, 1.5, Number.POSITIVE_INFINITY, 2 ** 53, '1', undefined, 1n]) {
+      const result = verify({ ...good, claimedActions: withLength(length) })
+      expect(result.accepted).toBe(false)
+      expect(result.claimProblems).toEqual([
+        'claim.claimedActions has a length that is not a non-negative safe integer.',
+      ])
+      expect(result.reason).toContain('claim.claimedActions has a length that is not a non-negative safe integer.')
+    }
+    const evidence = verify({ ...good, citedEvidenceIds: withLength(Number.NaN) })
+    expect(evidence.accepted).toBe(false)
+    expect(evidence.claimProblems).toEqual([
+      'claim.citedEvidenceIds has a length that is not a non-negative safe integer.',
+    ])
+  })
+
   it('does not walk an enormous sparse array index by index', () => {
     const huge = new Array<string>(2 ** 32 - 1)
     huge[0] = 'log-in'

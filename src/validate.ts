@@ -117,7 +117,12 @@ const MAX_PROBLEMS_PER_LIST = 20
  *
  * Reads `length`, the own index keys and each element once, and returns the
  * string entries in index order as a new array (the only thing the caller
- * computes from). Each hole (a run of holes counts once), non-string entry and
+ * computes from). A key counts as an index only in canonical form
+ * (`String(Number(key)) === key`, so `"00"`, `"0.0"` and `"+0"` are ordinary
+ * properties, not elements) and only below `length`. A `length` that is not a
+ * non-negative safe integer (a Proxy can report `NaN`) adds one problem and
+ * returns an empty list, so the claim is rejected rather than read as empty and
+ * accepted. Each hole (a run of holes counts once), non-string entry and
  * blank string adds a sentence to `problems` that names the index and the kind
  * of value but never echoes its content. Only own index keys are walked, so an
  * enormous sparse array costs time in proportion to what is present, and a
@@ -127,10 +132,17 @@ export function scanClaimList(value: unknown, label: string, problems: string[])
   if (!Array.isArray(value)) {
     throw new TypeError(`${label} must be an array (got ${describe(value)}).`)
   }
-  const length: number = value.length
+  const length: unknown = value.length
+  if (typeof length !== 'number' || !Number.isSafeInteger(length) || length < 0) {
+    problems.push(`${label} has a length that is not a non-negative safe integer.`)
+    return []
+  }
   const indices = Object.keys(value)
+    .filter((key) => {
+      const index = Number(key)
+      return String(index) === key && Number.isSafeInteger(index) && index >= 0 && index < length
+    })
     .map(Number)
-    .filter((index) => Number.isInteger(index) && index >= 0 && index < length)
     .sort((a, b) => a - b)
   const strings: string[] = []
   const found: string[] = []

@@ -250,7 +250,10 @@ How the checks work:
     either list, or a blank string (empty, or only whitespace and invisible
     characters). Non-string entries are not copied into
     `unauthorizedActions`; the string entries around them are still checked.
-    A list reports at most 20 problems plus one line counting the rest;
+    A list reports at most 20 problems plus one line counting the rest. Only
+    canonical index keys count as elements (an own `"00"` or `"0.0"` key does
+    not fill a hole at `[0]`), and a list whose `length` is not a non-negative
+    safe integer (a Proxy can report `NaN`) is one problem, not an empty list;
   - `claimedFacts` that is present but not a plain or null-prototype object
     (`null`, an array, a `Map`, a class instance, `true`). Its facts are not
     counted in `coverage`;

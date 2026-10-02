@@ -1,5 +1,7 @@
 # Agent Receipt Kit
 
+**[Try it in your browser →](https://lkopietz3-byte.github.io/honesty-kits/#agent-receipt-kit)** · Part of [honesty kits](https://github.com/lkopietz3-byte/honesty-kits), a family of small checks for the claims an AI product makes.
+
 Agent Receipt Kit is a small, dependency-free TypeScript library for checking
 what an AI agent says it did. Before the agent runs, you issue a work packet
 that lists the actions it may take and the evidence ids it may cite. When the

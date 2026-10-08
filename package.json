@@ -1,6 +1,6 @@
 {
   "name": "agent-receipt-kit",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Dependency-free TypeScript checks that compare an AI agent's report with the actions and evidence ids it was issued and with a caller-supplied observation.",
   "keywords": [
     "ai-agent",
@@ -11,7 +11,8 @@
     "evidence",
     "receipt",
     "typescript",
-    "zero-dependency"
+    "zero-dependency",
+    "honesty-kits"
   ],
   "author": "Lucas Kopietz",
   "license": "MIT",
@@ -19,7 +20,7 @@
     "type": "git",
     "url": "git+https://github.com/lkopietz3-byte/agent-receipt-kit.git"
   },
-  "homepage": "https://github.com/lkopietz3-byte/agent-receipt-kit#readme",
+  "homepage": "https://lkopietz3-byte.github.io/honesty-kits/#agent-receipt-kit",
   "bugs": {
     "url": "https://github.com/lkopietz3-byte/agent-receipt-kit/issues"
   },

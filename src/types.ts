@@ -44,7 +44,8 @@ export interface WorkPacket<Scope = unknown, Authority = AuthorityLevel> {
    * Id a claim must echo in its packetId. issuePacket generates
    * `pkt-<random UUID>` unless the caller supplies one. verifyReceipt
    * requires a string that shows something (not empty, not only whitespace or
-   * invisible characters) and compares it exactly.
+   * invisible characters, control characters or the Braille blank U+2800) and
+   * compares it exactly.
    */
   id: string
   /**
@@ -113,7 +114,10 @@ export interface AgentClaim<Fact = unknown> {
    * claimProblems says so; nothing is thrown), and only `undefined` means "no
    * facts". Keep values JSON-shaped (plain objects, arrays, primitives);
    * Dates are compared by time value, and any other object only matches
-   * itself. Two separate circular values, or two separate values nested
+   * itself. "Plain" means the prototype is null or `Object.prototype` of any
+   * realm; an object with any other prototype (a class instance, or an object
+   * whose prototype is a bare null-prototype object) is not plain, because
+   * keys inherited through it could not be compared. Two separate circular values, or two separate values nested
    * deeper than the runtime's stack allows, make verifyReceipt throw a
    * RangeError.
    */
@@ -180,6 +184,27 @@ export interface ReceiptCoverage {
   uncheckedFactKeys: string[]
 }
 
+/**
+ * A copy of the parts of the claim that were actually judged, made while
+ * `verifyReceipt` read them. Use these, not the claim object, for anything you
+ * do after an acceptance: a getter or a later edit on the claim cannot change
+ * them.
+ */
+export interface ReceiptSnapshot<Fact = unknown> {
+  /** The string entries of `claim.claimedActions`, in order. */
+  claimedActions: string[]
+  /** The string entries of `claim.citedEvidenceIds`, in order. */
+  citedEvidenceIds: string[]
+  /**
+   * The claimed facts, deep-copied: arrays, Dates and plain objects are new
+   * objects. Any other object (a Map, a class instance) is the same reference
+   * as in the claim. `{}` when the claim had no facts or `claimedFacts` was
+   * rejected. `Contradiction.claimedFact` and `currentFact` point into these
+   * same copies.
+   */
+  claimedFacts: Record<string, Fact>
+}
+
 /** The structured result of verifying an AgentClaim against a WorkPacket. */
 export interface ReceiptResult<Fact = unknown> {
   /**
@@ -223,9 +248,15 @@ export interface ReceiptResult<Fact = unknown> {
    */
   coverage: ReceiptCoverage
   /**
+   * What was judged, copied at the moment it was read. Additive. See
+   * ReceiptSnapshot.
+   */
+  snapshot: ReceiptSnapshot<Fact>
+  /**
    * Human-readable explanation of the decision, for logs. Untrusted ids and
    * keys appear JSON-quoted with control characters, line breaks and
-   * bidirectional formatting characters escaped as `\uXXXX`. For an accepted claim
+   * invisible format characters (zero-width space, bidirectional formatting
+   * characters, tag characters; not the zero-width joiner and non-joiner) escaped as `\uXXXX`. For an accepted claim
    * it says how many claimed facts were actually cross-checked. The wording
    * is not a stable API; branch on the structured fields instead.
    */

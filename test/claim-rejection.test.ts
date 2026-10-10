@@ -145,7 +145,8 @@ describe('element problems in claim lists reject the claim and never throw', () 
     ['a bidi isolate', '⁦'],
     ['an Arabic letter mark', '؜'],
   ])('rejects a blank entry (%s) even when the packet lists that exact blank string', (_name, blank) => {
-    const lax = issuePacket({}, 'local', [blank], [blank], { id: 'pkt-blank', issuedAt: 'T' })
+    // issuePacket refuses a blank entry, so the packet is built by hand.
+    const lax = { ...packet, id: 'pkt-blank', allowedActions: [blank], evidenceIds: [blank] }
     const claim = { packetId: 'pkt-blank', claimedActions: [blank], citedEvidenceIds: [blank] }
     const result = verifyReceipt(lax, claim)
     expect(result.accepted).toBe(false)
@@ -330,7 +331,8 @@ describe('a malformed claim is never accepted', () => {
       { ...good, packetId: undefined },
       { ...good, packetId: 5 },
     ]
-    const lax = issuePacket({}, 'local', ['log-in', '', 'x'], ['screenshot-1', ''], { id: 'pkt-claim', issuedAt: 'T' })
+    // issuePacket refuses a blank entry, so the packet is built by hand.
+    const lax = { ...packet, allowedActions: ['log-in', '', 'x'], evidenceIds: ['screenshot-1', ''] }
     for (const claim of malformed) {
       for (const state of [undefined, {}, { a: 1 }]) {
         expect(verifyReceipt(lax, asClaim(claim), state).accepted).toBe(false)

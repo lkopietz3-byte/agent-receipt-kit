@@ -5,6 +5,7 @@ export type {
   CurrentState,
   Contradiction,
   ReceiptCoverage,
+  ReceiptSnapshot,
   ReceiptResult,
 } from './types.js'
 

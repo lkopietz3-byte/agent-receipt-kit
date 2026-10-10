@@ -9,13 +9,28 @@
 
 /**
  * A plain object or a null-prototype object: not an array, Map, Set, Date,
- * RegExp or class instance. An object whose prototype's own prototype is null
- * (a plain object from another realm, such as a `vm` context) counts as plain.
+ * RegExp or class instance. "Plain" means the object's prototype is null, or
+ * is `Object.prototype` of any realm. A prototype from another realm (a `vm`
+ * context) is recognized by its structure: it has no prototype of its own, no
+ * enumerable keys, and the own `constructor` and `hasOwnProperty` an
+ * `Object.prototype` has. Any other prototype, including a null-prototype
+ * object used as a prototype, is refused: keys inherited through it would be
+ * invisible to a comparison that reads only own keys.
  */
 export function isPlainRecord(value: unknown): value is Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
   const prototype: unknown = Object.getPrototypeOf(value)
-  return prototype === null || Object.getPrototypeOf(prototype) === null
+  if (prototype === null || prototype === Object.prototype) return true
+  return typeof prototype === 'object' && looksLikeObjectPrototype(prototype)
+}
+
+function looksLikeObjectPrototype(prototype: object): boolean {
+  if (Object.getPrototypeOf(prototype) !== null) return false
+  if (Object.keys(prototype).length > 0) return false
+  const constructor: unknown = Object.getOwnPropertyDescriptor(prototype, 'constructor')?.value
+  const hasOwnProperty: unknown = Object.getOwnPropertyDescriptor(prototype, 'hasOwnProperty')?.value
+  if (typeof constructor !== 'function' || typeof hasOwnProperty !== 'function') return false
+  return Object.getOwnPropertyDescriptor(constructor, 'prototype')?.value === prototype
 }
 
 /**
@@ -32,13 +47,14 @@ export function describe(value: unknown): string {
 }
 
 /**
- * Whether `text` shows nothing: empty, or only whitespace and
+ * Whether `text` shows nothing: empty, or only whitespace, control characters,
  * Default_Ignorable_Code_Point characters (zero-width spaces, bidi controls,
- * the soft hyphen, variation selectors, Hangul fillers and similar).
- * `String.prototype.trim` alone misses the ignorable ones.
+ * the soft hyphen, variation selectors, tag characters, Hangul fillers and
+ * similar) and the Braille pattern blank (U+2800). `String.prototype.trim`
+ * alone misses all but the whitespace.
  */
 export function isBlank(text: string): boolean {
-  return /^[\p{White_Space}\p{Default_Ignorable_Code_Point}]*$/u.test(text)
+  return /^[\p{White_Space}\p{Cc}\p{Default_Ignorable_Code_Point}\u2800]*$/u.test(text)
 }
 
 /**
@@ -60,10 +76,11 @@ export function assertId(value: unknown, label: string): asserts value is string
  * TypeError naming `label` unless `value` is an array whose every position
  * holds a string. A hole is refused (an inherited index does not fill it), so
  * a sparse array can never be validated by a traversal that skips holes and
- * then processed by one that visits them. Callers compute from the returned
- * copy, never from `value` again.
+ * then processed by one that visits them. With `rejectBlank`, a string that
+ * shows nothing (see isBlank) is refused too. Callers compute from the
+ * returned copy, never from `value` again.
  */
-export function snapshotStringArray(value: unknown, label: string): string[] {
+export function snapshotStringArray(value: unknown, label: string, rejectBlank = false): string[] {
   if (!Array.isArray(value)) {
     throw new TypeError(`${label} must be an array (got ${describe(value)}).`)
   }
@@ -76,6 +93,11 @@ export function snapshotStringArray(value: unknown, label: string): string[] {
     const item: unknown = value[index]
     if (typeof item !== 'string') {
       throw new TypeError(`${label}[${index}] must be a string (got ${describe(item)}).`)
+    }
+    if (rejectBlank && isBlank(item)) {
+      throw new TypeError(
+        `${label}[${index}] must show something (got ${item === '' ? 'an empty string' : 'a string with nothing visible in it'}). A blank entry can never match a claim.`,
+      )
     }
     copy.push(item)
   }

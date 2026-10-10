@@ -4,6 +4,31 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **An array with its own `keys` method no longer matches any array of the same length.** The comparison called `keys()` on the claimed array, so an agent could hand it an empty iterator. Arrays are now compared by their own keys and values, without calling any method on the value. The same change removes a hang on a sparse array with a huge `length`.
+- **Facts inherited through a null-prototype prototype can no longer vanish.** An object whose prototype was a bare `Object.create(null)` object counted as plain, so inherited keys were invisible to the comparison and to `coverage` ("asserts no facts"). Plain now means a prototype of `null` or an `Object.prototype` (any realm, recognized by structure). Anything else is not plain.
+- **A Date with its own `getTime` is compared by its real time value.** The built-in `Date.prototype.getTime` is used after a brand check, so the claimed value cannot answer for itself. A Date from another realm (a `vm` context or an iframe) with an equal time now matches instead of producing a false contradiction. Two invalid Dates still match each other.
+- **`reason` escapes the zero-width space, the soft hyphen, the byte order mark and tag characters** (every format character except the zero-width joiner and non-joiner, which emoji sequences and several scripts need). Characters outside the Basic Multilingual Plane are written as two `\uXXXX` escapes.
+- **`issuePacket` rejects an empty or blank entry in `allowedActions` and `evidenceIds`.** A claim naming one was always rejected as blank, so the entry could never be used.
+- **The Braille blank (U+2800) and control characters count as blank** in ids, claim lists and `issuePacket` input.
+
+### Changed
+
+- **`ReceiptResult` has a new field, `snapshot`** (type `ReceiptSnapshot`, also exported): the string entries of `claimedActions` and `citedEvidenceIds` and a deep copy of the claimed facts, made while the claim is read. Use it instead of the claim object after an acceptance; a getter or later edit can no longer change what you accepted. This is additive.
+- **`Contradiction.claimedFact` and `currentFact` are now the copied values**, not the original objects (equal in content; a `Map` or class instance is still the same reference). `snapshot.claimedFacts` shares those copies.
+- **An object whose prototype is a bare null-prototype object is no longer plain.** As `claimedFacts` it rejects the claim (`claimProblems`), as `currentState` it throws a `TypeError`, and nested inside a fact it matches only itself.
+- **`issuePacket` throws a `TypeError` for a blank list entry** (see Fixed). Build the packet object yourself if you really need one; `verifyReceipt` still accepts it and the entry still matches nothing.
+- **Arrays and Dates are compared on their own enumerable string keys as well**, so an extra property on an array or a Date now counts as a difference.
+- **Claimed facts are copied before they are compared.** A deep fact with no `currentState` now costs time proportional to its size instead of nothing. The copy is iterative, so depth alone does not overflow the stack there; comparing two separate deep values still throws a `RangeError`, as before.
+
+### Documented
+
+- Symbol keys and non-enumerable properties are not compared, on either side. Keep facts JSON-shaped.
+- A blank entry in a hand-built packet's lists is not checked by `verifyReceipt` (the packet is your own input); it can never match a valid claim.
+
 ## [0.2.1] - 2026-10-07
 
 No change to the library's behavior or API.

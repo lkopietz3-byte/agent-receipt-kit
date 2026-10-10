@@ -24,16 +24,26 @@
   additive; `claimProblems` must be empty for `accepted`, `coverage` never
   changes it.
 - Fact comparison fails closed: values it cannot compare by content (anything
-  but primitives, arrays, plain objects, and Dates) only match themselves. The
+  but primitives, arrays, plain objects, and Dates) only match themselves.
+  "Plain" means the prototype is null or an `Object.prototype` (any realm,
+  recognized by structure); any other prototype is not plain, so a key
+  inherited through it can never be invisible to the comparison. The
+  comparison never calls a method found on a value from the claim: it uses
+  index and key reads, the static `Object` functions, and the built-in
+  `Date.prototype.getTime` as a brand check. The
   same object on both sides matches without being walked, including a
   circular one; two separate circular or extremely deep values throw a
   `RangeError`, never an acceptance.
 - `verifyReceipt` is synchronous, deterministic, reads no clock, and does not
   mutate its inputs. Each caller field is read once and the result is
-  computed from that read. Untrusted strings in `reason` are JSON-quoted with
-  control characters, line breaks and bidi formatting characters escaped.
+  computed from that read, including a deep copy of the claimed facts that is
+  returned as `result.snapshot` (use it, not the claim, after an acceptance).
+  Untrusted strings in `reason` are JSON-quoted with control characters, line
+  breaks and format (Cf) characters escaped, except the zero-width joiner and
+  non-joiner.
 - `issuePacket` (caller-owned input) copies its lists from one indexed read
-  and throws for non-array, non-string or sparse lists and a blank
+  and throws for non-array, non-string or sparse lists, a blank entry in
+  either list (a claim naming one is always rejected) and a blank
   `options.id`.
 - The trail has no removal API.
 - Zero runtime dependencies. ESM only. Node.js 20 or newer (`engines`); see

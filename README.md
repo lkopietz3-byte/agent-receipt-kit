@@ -12,6 +12,14 @@ mismatch is named in a structured result instead of being accepted quietly.
 It is framework-agnostic: the same checks work behind a coding agent, browser
 automation, a data pipeline, or a support workflow.
 
+**Who it is for:** teams whose agents already produce a structured report
+(action names, evidence ids, a few keyed facts) and who can read the same facts
+back from a system they control, such as a database, a CI run or a file diff.
+**What it does not do:** it does not read an agent's free-text log, extract
+claims from prose, tolerate rounding or formatting differences, or look at the
+real world. You supply the structured claim and the observation; it compares
+them exactly.
+
 ## When to use it, and when not to
 
 Use it when an agent reports its own work and you want a plain, testable
@@ -24,6 +32,11 @@ Do not use it as:
   cannot stop an agent from doing something; enforce that where tools run.
 - **Proof that the work happened.** It compares lists and values you supply.
   It never looks at a screenshot, file, or database itself.
+- **A reader of free-text agent logs.** Turning a transcript into keyed facts
+  (`{ allTestsPass: true }`) is a separate step you own, and most of the effort
+  in practice. Hedged wording ("should work", "seems fixed") needs a decision
+  at that step: leave it out of `claimedFacts`, or record it as a fact you can
+  check. The kit scores whatever keys you hand it as plain assertions.
 - **An integrity or identity layer.** Packets and claims are plain objects.
   Nothing is signed or hashed, so the kit cannot tell you who issued a packet
   or whether it was edited after it was issued.
@@ -137,10 +150,13 @@ const packet = issuePacket(
 - `allowedActions` and `evidenceIds` must be arrays of strings with no holes;
   anything else throws a `TypeError` that names the bad index. Each is read
   once and copied, so editing your arrays later does not change the packet.
-  `scope` is stored by reference.
+  An entry that shows nothing (empty, or only whitespace, control characters
+  and invisible characters such as the zero-width space or the Braille blank
+  U+2800) throws as well: a claim naming it is always rejected, so it could
+  never be used. `scope` is stored by reference.
 - `options` must be a plain object when given (`null` throws).
 
-### `verifyReceipt(packet, claim, currentState?)`
+### `verifyReceipt(packet, claim, currentState?, options?)`
 
 Call this when the agent reports back. It returns a structured result, not a
 bare boolean, so you can see exactly what failed.
@@ -168,7 +184,10 @@ const result = verifyReceipt(packet, claim, currentState)
 //   contradictions: [],
 //   packetMismatch: false,
 //   claimProblems: [],
+//   uncoveredFactKeys: [],
 //   coverage: { stateSupplied: true, claimedFactCount: 1, comparedFactCount: 1, uncheckedFactKeys: [] },
+//   snapshot: { claimedActions: ['log-in', 'add-to-cart'], citedEvidenceIds: ['screenshot-1', 'screenshot-2'],
+//               claimedFacts: { cartItemCount: 1 } },
 //   reason: "Claim matches the issued packet's authority and evidence and answers
 //            the correct packet. 1 claimed fact(s) agree with the supplied current state."
 // }
@@ -192,6 +211,41 @@ verifyReceipt(packet, claim, { cartItemCount: 0 })
 // => { accepted: false, contradictions: [{ key: 'cartItemCount', claimedFact: 1, currentFact: 0 }], ... }
 ```
 
+#### Refusing facts nobody checked: `requireCoverage`
+
+By default a claimed fact with no same-keyed value in `currentState` is not
+compared: the result is still `accepted: true` and the key is listed in
+`coverage.uncheckedFactKeys`. If your rule is "I only accept a report whose
+facts I could check", pass `{ requireCoverage: true }` as the fourth argument:
+
+```ts
+const claim = {
+  packetId: packet.id,
+  claimedActions: ['log-in'],
+  citedEvidenceIds: ['screenshot-1'],
+  claimedFacts: { allTestsPass: true }, // the observation below says nothing about this
+}
+verifyReceipt(packet, claim, { cartItemCount: 1 })
+// => accepted: true, coverage.uncheckedFactKeys: ['allTestsPass']
+
+verifyReceipt(packet, claim, { cartItemCount: 1 }, { requireCoverage: true })
+// => accepted: false, uncoveredFactKeys: ['allTestsPass'],
+//    reason: '1 claimed fact(s) are not covered by the supplied current state: "allTestsPass" (...), and requireCoverage is set.'
+```
+
+- `uncoveredFactKeys` is `[]` unless the option is on; then it equals
+  `coverage.uncheckedFactKeys`, and any entry makes `accepted` false. It is
+  reported next to the other checks, so a result can show a contradiction and
+  an uncovered fact together.
+- With no `currentState` (or `null`), every claimed fact is uncovered.
+- A claim that asserts no facts is still accepted: there is nothing to cover.
+- `options` come from your own code, so they throw a `TypeError` when wrong:
+  not a plain object, an unknown key (a typo must not switch the check off),
+  or a `requireCoverage` that is not a boolean.
+- Covered means a same-keyed own key exists in `currentState`. The kit cannot
+  tell whether that value is a real observation. If your state builder fills
+  in a default for every key, `requireCoverage` has nothing to refuse.
+
 How the checks work:
 
 - **Actions and evidence ids** are matched exactly against the packet's
@@ -205,6 +259,16 @@ How the checks work:
   by time value. Any other object (a `Map`, `Set`, or class instance) only
   matches itself, so a difference the comparison cannot see is reported as a
   contradiction rather than accepted.
+  "Plain" means the prototype is `null` or an `Object.prototype`, including
+  one from another realm (a `vm` context or an iframe). An object with any
+  other prototype is not plain, because a key it inherits could not be
+  compared: as `claimedFacts` it rejects the claim, as `currentState` it
+  throws, and nested inside a fact it only matches itself. The comparison
+  never calls a method that lives on a claimed value, so an array with its own
+  `keys` or a Date with its own `getTime` is judged by what it actually holds.
+  Arrays, Dates and objects are compared on their own enumerable string keys,
+  so an extra property on an array or a Date counts. Symbol keys and
+  non-enumerable properties are not compared (see "Honest limits").
 - **`coverage`** says how much of that was done, on every result, accepted or
   not. `stateSupplied` is `true` when you passed a `currentState` object
   (`undefined` and `null` mean none). `claimedFactCount` is how many facts the
@@ -214,13 +278,25 @@ How the checks work:
   `uncheckedFactKeys` lists the rest, spelled exactly as the claim spelled
   them, in the claim's key order (all of them when no state was supplied).
   `comparedFactCount + uncheckedFactKeys.length` always equals
-  `claimedFactCount`. It never changes what `accepted` means.
-- **All four checks run** even when one fails, so a result can show a packet
-  mismatch and unauthorized actions together.
+  `claimedFactCount`. On its own it never changes what `accepted` means; only
+  `requireCoverage` does.
+- **All four checks run** (plus the coverage rule when you ask for it) even when
+  one fails, so a result can show a packet mismatch and unauthorized actions
+  together.
+- **`snapshot`** is a copy of what was judged: the string entries of
+  `claimedActions` and `citedEvidenceIds`, and a deep copy of the claimed facts
+  (arrays, Dates and plain objects are new objects; a `Map` or class instance
+  is the same reference). It is made while the claim is read, so a getter or a
+  later edit on the claim cannot change it. Use `snapshot`, not the claim
+  object, for anything you do after an acceptance. It is `{}` for the facts
+  when the claim had none or `claimedFacts` was rejected.
 - **`reason`** is a readable summary for logs. Ids and keys from the claim are
-  JSON-quoted, and control characters, line breaks and bidirectional
-  formatting characters in them are escaped as `\uXXXX`, so an agent cannot
-  forge extra log lines, send terminal escapes, or reorder the line. The
+  JSON-quoted, and control characters, line breaks, bidirectional
+  formatting characters and other invisible format characters (the
+  zero-width space, the soft hyphen, tag characters) in them are escaped as
+  `\uXXXX`, so an agent cannot forge extra log lines, send terminal escapes,
+  hide text, or reorder the line. The zero-width joiner and non-joiner are
+  left readable because emoji sequences and several scripts need them. The
   structured fields keep the exact text. For an accepted claim `reason` says
   how many claimed facts were actually cross-checked. Branch on the
   structured fields, not on this wording.
@@ -232,40 +308,46 @@ How the checks work:
 
   Throws a `TypeError` (your code passed something it should not have):
   - `packet` is not an object, or `packet.id` is missing, not a string, or
-    shows nothing (empty, or only whitespace and invisible characters). Before
-    0.2.0, two missing ids matched each other;
+    shows nothing (empty, or only whitespace, control and invisible
+    characters). Before 0.2.0, two missing ids matched each other;
   - `packet.allowedActions` or `packet.evidenceIds` is not an array of
     strings, or has a hole. The message names the index;
   - `currentState` is anything other than `undefined`, `null`, or a plain or
-    null-prototype object (an array, a `Map` or a class instance throws).
+    null-prototype object (an array, a `Map`, a class instance or an object
+    whose prototype is a bare null-prototype object throws).
 
   Still throws, as in 0.1.1 (the claim as a whole is unusable, so there is
   nothing to reject entry by entry):
   - `claim` is not an object (`null`, `undefined`, a number, a string, an
     array);
   - `claim.claimedActions` or `claim.citedEvidenceIds` is missing or is not an
-    array.
+    array. If the claim is parsed from an agent's raw output, wrap the call in
+    `try`/`catch` (or check those two fields first) so an unusable report
+    cannot crash the verifier.
 
   Rejected, never thrown and never accepted (`claimProblems` names each one):
   - a non-string entry in `claimedActions` or `citedEvidenceIds`
     (`claim.claimedActions[0] is not a string (got number).`), a hole in
-    either list, or a blank string (empty, or only whitespace and invisible
-    characters). Non-string entries are not copied into
+    either list, or a blank string (empty, or only whitespace, control and
+    invisible characters). Non-string entries are not copied into
     `unauthorizedActions`; the string entries around them are still checked.
     A list reports at most 20 problems plus one line counting the rest. Only
     canonical index keys count as elements (an own `"00"` or `"0.0"` key does
     not fill a hole at `[0]`), and a list whose `length` is not a non-negative
     safe integer (a Proxy can report `NaN`) is one problem, not an empty list;
   - `claimedFacts` that is present but not a plain or null-prototype object
-    (`null`, an array, a `Map`, a class instance, `true`). Its facts are not
-    counted in `coverage`;
+    (`null`, an array, a `Map`, a class instance, an object whose prototype is
+    a bare null-prototype object, `true`). Its facts are not counted in
+    `coverage`;
   - a missing, non-string or blank `claim.packetId`. It is a `packetMismatch`,
     because it can never equal a packet's id.
 
   `claimProblems` never repeats the claim's content, only field names, indexes
   and kinds of value. Each field is read once and the result is computed from
   what was read, so a getter that changes its answer cannot pass validation and
-  then be judged on something else. It does not mutate its inputs and reads no
+  then be judged on something else. Claimed facts are copied
+  the same way, one read per property, before anything is compared (see
+  `snapshot`). It does not mutate its inputs and reads no
   clock.
 - **Circular and very deep facts.** Two references to the very same object are
   equal without being walked, so one circular object passed on both sides
@@ -274,7 +356,9 @@ How the checks work:
   throw a `RangeError` (stack overflow). It is never returned as an
   acceptance. Catch it and treat the receipt as unverified. The depth at which
   it happens depends on the runtime (6,000 nested levels overflowed on Node
-  26.3.0), so it is not a fixed limit. If facts come from an untrusted
+  26.3.0), so it is not a fixed limit. Claimed facts are copied before they are compared, and that copy is
+  iterative, so depth alone only costs time and memory proportional to size
+  until two separate deep values are compared. If facts come from an untrusted
   source, bound their depth and size before calling.
 
 ### `createRefutationTrail()`
@@ -317,7 +401,9 @@ trail.list() // every retained entry, oldest first (a copy of the array)
 | `CurrentState<Fact>` | Your observation: a record of fact key to value. |
 | `Contradiction<Fact>` | `key`, `claimedFact`, `currentFact` for one disagreeing fact. |
 | `ReceiptCoverage` | `stateSupplied`, `claimedFactCount`, `comparedFactCount`, `uncheckedFactKeys`. |
-| `ReceiptResult<Fact>` | `accepted`, `unauthorizedActions`, `droppedEvidenceIds`, `contradictions`, `packetMismatch`, `claimProblems`, `coverage`, `reason`. |
+| `ReceiptSnapshot<Fact>` | `claimedActions`, `citedEvidenceIds`, `claimedFacts`: the copy of the claim that was judged. |
+| `VerifyOptions` | The fourth argument of `verifyReceipt`: `requireCoverage?: boolean`. |
+| `ReceiptResult<Fact>` | `accepted`, `unauthorizedActions`, `droppedEvidenceIds`, `contradictions`, `packetMismatch`, `claimProblems`, `uncoveredFactKeys`, `coverage`, `snapshot`, `reason`. |
 | `RefutationEntry<Fact>` | `id`, `packetId`, `claim`, `result`, `recordedAt`. |
 | `RefutationTrail<Fact>` | `record`, `list`, `find`. |
 
@@ -377,11 +463,31 @@ example `'observe' | 'draft' | 'sandbox' | 'production'`).
   true.** Observations are optional, and claimed facts missing from
   `currentState` are not compared, so an accepted receipt can contain facts
   nobody checked. `result.coverage` says how many were compared and which
-  keys were not; the accepted `reason` says the same in words.
+  keys were not; the accepted `reason` says the same in words. Pass
+  `{ requireCoverage: true }` to refuse such a claim instead.
 - **`currentState` is only as good as what you pass in.** The kit has no
   browser, filesystem, or network access and cannot re-observe anything
   itself. A stale, spoofable, or agent-controlled `currentState` gives you a
   false sense of independent verification.
+- **Comparison is exact equality.** `1` and `'1'`, `0.1 + 0.2` and `0.3`,
+  `'345\r\n'` and `'345'`, and `['a', 'b']` and `['b', 'a']` all contradict.
+  There is no tolerance, normalization or per-key comparator, so normalize both
+  sides before calling (round numbers, trim text, sort lists you consider
+  unordered). An own key holding `undefined` is compared (and contradicts
+  `null`); a missing key is unchecked. Pick one convention for "no value".
+- **Packet lists are exact membership.** There is no prefix or glob scope for
+  `allowedActions` or `evidenceIds`, and no aliasing (`'Edit-File'` is not
+  `'edit-file'`). A path-scoped permission means listing each path, or turning
+  the path check into a fact you verify yourself. Ids are fixed when the packet
+  is issued, so evidence ids that only exist after the run must be added by
+  issuing the packet later or checking them separately.
+- **A repeated entry is reported every time.** A claim listing the same
+  unauthorized action 5,000 times produces 5,000 entries and a long `reason`.
+  Bound the size of an agent's lists before calling.
+- **Options are checked by their enumerable keys.** A typo in a key defined as
+  non-enumerable (for example through `Object.defineProperty`) is not
+  rejected; plain object literals, which is how options are normally written,
+  are checked.
 - **Contradictions are surfaced, not resolved.** Deciding whether to trust the
   claim, trust the fresh read, or look again by hand is up to a person or your
   own policy.
@@ -396,6 +502,9 @@ example `'observe' | 'draft' | 'sandbox' | 'production'`).
   `authorityLevel`, `issuedAt`, `reportedAt` or any timestamp, and it does not
   defend against a hostile proxy or getter that throws. Keep facts
   JSON-shaped and bound their depth (see "Circular and very deep facts").
+- **Only enumerable string keys are compared.** A fact hidden in a
+  non-enumerable property or a symbol key, on either side, is invisible to the
+  comparison, as it is to `JSON.stringify`. Keep facts JSON-shaped.
 - **Nothing stops a replay.** The same accepted claim verifies again every
   time; the kit keeps no record of what it has already accepted.
 - **No integrity or authenticity.** Packets and claims are not signed or
@@ -458,7 +567,8 @@ project, and runs the consumer probes in `scripts/`. Code tour:
   them.
 - [`test/`](test/) covers accepted, unauthorized, dropped-evidence,
   mismatched-packet, and contradictory claims, fact comparison rules and
-  circular or deep input, input checks, coverage, and the reason text.
+  circular or deep input, input checks, coverage, the `requireCoverage`
+  option, and the reason text.
 
 See [`ENGINEERING.md`](ENGINEERING.md) for the invariants and release notes
 and [`CHANGELOG.md`](CHANGELOG.md) for changes.

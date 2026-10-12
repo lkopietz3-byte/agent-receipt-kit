@@ -19,21 +19,37 @@
   (a `packetMismatch`; two missing ids never match). Kept from 0.1.1, these
   still throw: a claim that is not an object, and a claim list that is not an
   array.
-- Every result carries `claimProblems` and `coverage` (`stateSupplied`,
-  `claimedFactCount`, `comparedFactCount`, `uncheckedFactKeys`). Both are
-  additive; `claimProblems` must be empty for `accepted`, `coverage` never
-  changes it.
+- Every result carries `claimProblems`, `uncoveredFactKeys` and `coverage`
+  (`stateSupplied`, `claimedFactCount`, `comparedFactCount`,
+  `uncheckedFactKeys`). `claimProblems` must be empty for `accepted`;
+  `coverage` never changes it.
+- `requireCoverage` is opt-in (`verifyReceipt(packet, claim, state, { requireCoverage: true })`).
+  Off, `uncoveredFactKeys` is `[]` and `accepted` keeps its plain meaning. On,
+  `uncoveredFactKeys` equals `coverage.uncheckedFactKeys` and any entry makes
+  `accepted` false. A claim with no facts is still accepted. Options come from
+  the caller's own code, so a non-object, an unknown key or a non-boolean
+  value throws a `TypeError`; each option is read once.
 - Fact comparison fails closed: values it cannot compare by content (anything
-  but primitives, arrays, plain objects, and Dates) only match themselves. The
+  but primitives, arrays, plain objects, and Dates) only match themselves.
+  "Plain" means the prototype is null or an `Object.prototype` (any realm,
+  recognized by structure); any other prototype is not plain, so a key
+  inherited through it can never be invisible to the comparison. The
+  comparison never calls a method found on a value from the claim: it uses
+  index and key reads, the static `Object` functions, and the built-in
+  `Date.prototype.getTime` as a brand check. The
   same object on both sides matches without being walked, including a
   circular one; two separate circular or extremely deep values throw a
   `RangeError`, never an acceptance.
 - `verifyReceipt` is synchronous, deterministic, reads no clock, and does not
   mutate its inputs. Each caller field is read once and the result is
-  computed from that read. Untrusted strings in `reason` are JSON-quoted with
-  control characters, line breaks and bidi formatting characters escaped.
+  computed from that read, including a deep copy of the claimed facts that is
+  returned as `result.snapshot` (use it, not the claim, after an acceptance).
+  Untrusted strings in `reason` are JSON-quoted with control characters, line
+  breaks and format (Cf) characters escaped, except the zero-width joiner and
+  non-joiner.
 - `issuePacket` (caller-owned input) copies its lists from one indexed read
-  and throws for non-array, non-string or sparse lists and a blank
+  and throws for non-array, non-string or sparse lists, a blank entry in
+  either list (a claim naming one is always rejected) and a blank
   `options.id`.
 - The trail has no removal API.
 - Zero runtime dependencies. ESM only. Node.js 20 or newer (`engines`); see
@@ -62,10 +78,12 @@ under strict NodeNext settings. If you change exports on purpose, run
 `node scripts/verify-package.mjs --update-api` and review the diff.
 
 Tests live in `test/`. Every bug fix lands with a test that fails on the old
-code. The 0.2.0 fix pass measured v8 coverage (100% statements, branches,
-functions and lines on `src/`) and a Stryker mutation run (100%: 301 killed, 0
-survived; it was 95.4% before, with 12 survivors). Neither tool is a
-dependency or a CI step: run them locally with
+code. `test/verdict-table.test.ts` and `test/require-coverage.test.ts` are
+named verdict rows: never edit an expected verdict just to get green. The 0.2.0
+fix pass measured v8 coverage (100% on `src/`) and a Stryker mutation run (100%:
+301 killed, 0 survived). Those numbers were measured at 0.2.0 and have not been
+re-measured for 0.3.0. Neither tool is a dependency or a CI step: run them
+locally with
 `npm i -D --no-save @stryker-mutator/core @stryker-mutator/vitest-runner @vitest/coverage-v8@4.1.11`
 and an uncommitted `stryker.config.json` (`testRunner: vitest`,
 `mutate: ["src/**/*.ts"]`, `coverageAnalysis: perTest`).
@@ -76,7 +94,7 @@ CI runs [`arethetypeswrong`](https://github.com/arethetypeswrong/arethetypeswron
 (`npm run attw`, which is `attw --pack . --ignore-rules cjs-resolves-to-esm`)
 against the packed tarball after the build step. The `cjs-resolves-to-esm` rule is ignored on
 purpose: this is an ESM-only package (`"type": "module"`, no `require` entry point), so a
-CommonJS consumer must use Node's `require(esm)` support (Node >=20.19 or >=22.12 — see
+CommonJS consumer must use Node's `require(esm)` support (Node >=20.19 or >=22.12, see
 "Runtime support policy" below) rather than a native `require`. A dual CJS+ESM build was
 rejected to avoid the dual-package hazard (two separately-identified copies of the same module,
 with broken `instanceof` checks and duplicated module state across the CJS and ESM entry
@@ -86,14 +104,15 @@ points).
 
 `npm run verify` (lint, typecheck, test, build, verify:package) runs automatically before
 publish via the `prepublishOnly` script, so a broken build cannot reach the registry by
-accident. To release: add a dated entry to `CHANGELOG.md`, bump `version` in
+accident. To release: change the version heading in `CHANGELOG.md` from
+"unreleased" to the date, bump `version` in
 `package.json`, commit, and push a `vX.Y.Z` tag that matches the new version, then let
 `.github/workflows/release.yml` install, verify, and publish it. (You can also run
 `npm publish` locally; `prepublishOnly` still guards it.)
 
 npm's unpublish policy is deliberately narrow. Within 72 hours of publishing, a version can be
 unpublished only if no other published package depends on it. After 72 hours, unpublishing also
-requires fewer than 300 downloads in the last week and a single maintainer — most released
+requires fewer than 300 downloads in the last week and a single maintainer, so most released
 versions won't qualify either way. A given `name@version` can never be reused, published or
 not, even after an unpublish. Treat unpublish as unavailable: prefer fixing forward with a new
 patch version, and use `npm deprecate <name>@"<range>" "<message>"` to warn consumers off a
@@ -102,7 +121,7 @@ bad release while it stays installable for anyone already pinned to it.
 ### Runtime support policy
 
 - **Supported (recommended for production):** Node 22 and 24 LTS; Node 26 current.
-- **Compatibility-tested:** Node 20. Node 20 is end-of-life — nodejs.org's release page
+- **Compatibility-tested:** Node 20. Node 20 is end-of-life: nodejs.org's release page
   (<https://nodejs.org/en/about/previous-releases>) lists it as `EOL`, with its final release
   dated Mar 24, 2026. The `compat` job in `verify.yml` still runs on Node 20 (latest 20.x and exactly
   20.19.0) to catch regressions, but that runtime gets no security fixes upstream; don't run production traffic

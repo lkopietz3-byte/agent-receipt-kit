@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { issuePacket } from '../src/packet.js'
 import { verifyReceipt } from '../src/receipt.js'
 import { createRefutationTrail } from '../src/trail.js'
+import { runInNewRealm } from './realm.js'
 import type { AgentClaim, CurrentState, WorkPacket } from '../src/types.js'
 
 // Regression inputs for the external audit (ARK-001, OBS-01 to OBS-04) and the
@@ -124,11 +125,16 @@ describe('currentState must be a plain object (OBS-03)', () => {
   })
 
   it('accepts a plain object from another realm, whose prototype is not this realm\'s Object.prototype', () => {
-    // A `vm` context's plain objects look like this: the prototype's own prototype is null.
-    const foreign = Object.assign(Object.create(Object.create(null) as object) as Record<string, unknown>, { cartItemCount: 1 })
+    const foreign = runInNewRealm('({ cartItemCount: 1 })') as Record<string, unknown>
     expect(Object.getPrototypeOf(foreign)).not.toBe(Object.prototype)
     expect(verifyReceipt(packet, withFacts({ cartItemCount: 2 }), foreign).contradictions).toHaveLength(1)
     expect(verifyReceipt(packet, withFacts(foreign), { cartItemCount: 1 }).accepted).toBe(true)
+  })
+
+  it('refuses an object whose prototype is a bare null-prototype object, which would hide inherited keys', () => {
+    const bare = Object.assign(Object.create(Object.create(null) as object) as Record<string, unknown>, { cartItemCount: 1 })
+    expect(() => verifyReceipt(packet, withFacts({ cartItemCount: 1 }), bare)).toThrow(TypeError)
+    expect(verifyReceipt(packet, withFacts(bare), { cartItemCount: 1 }).accepted).toBe(false)
   })
 })
 

@@ -44,7 +44,8 @@ export interface WorkPacket<Scope = unknown, Authority = AuthorityLevel> {
    * Id a claim must echo in its packetId. issuePacket generates
    * `pkt-<random UUID>` unless the caller supplies one. verifyReceipt
    * requires a string that shows something (not empty, not only whitespace or
-   * invisible characters) and compares it exactly.
+   * invisible characters, control characters or the Braille blank U+2800) and
+   * compares it exactly.
    */
   id: string
   /**
@@ -113,7 +114,10 @@ export interface AgentClaim<Fact = unknown> {
    * claimProblems says so; nothing is thrown), and only `undefined` means "no
    * facts". Keep values JSON-shaped (plain objects, arrays, primitives);
    * Dates are compared by time value, and any other object only matches
-   * itself. Two separate circular values, or two separate values nested
+   * itself. "Plain" means the prototype is null or `Object.prototype` of any
+   * realm; an object with any other prototype (a class instance, or an object
+   * whose prototype is a bare null-prototype object) is not plain, because
+   * keys inherited through it could not be compared. Two separate circular values, or two separate values nested
    * deeper than the runtime's stack allows, make verifyReceipt throw a
    * RangeError.
    */
@@ -136,6 +140,22 @@ export interface AgentClaim<Fact = unknown> {
  * an array or a class instance throws a TypeError). Only its own keys count.
  */
 export type CurrentState<Fact = unknown> = Record<string, Fact>
+
+/**
+ * Options for `verifyReceipt`. They come from your own code, so a bad one
+ * (not an object, an unknown key, a non-boolean value) throws a TypeError.
+ */
+export interface VerifyOptions {
+  /**
+   * When true, a claim is not accepted while any fact it asserts was not
+   * compared with a same-keyed value in `currentState`: either no state was
+   * supplied, or the state has no own key for that fact. Those keys are listed
+   * in `ReceiptResult.uncoveredFactKeys`. A claim that asserts no facts is
+   * still accepted. Default false, which keeps the plain meaning of `accepted`
+   * (no mismatch found among the things that were compared).
+   */
+  requireCoverage?: boolean
+}
 
 /** One fact where a claim and the supplied current state disagree. */
 export interface Contradiction<Fact = unknown> {
@@ -180,11 +200,33 @@ export interface ReceiptCoverage {
   uncheckedFactKeys: string[]
 }
 
+/**
+ * A copy of the parts of the claim that were actually judged, made while
+ * `verifyReceipt` read them. Use these, not the claim object, for anything you
+ * do after an acceptance: a getter or a later edit on the claim cannot change
+ * them.
+ */
+export interface ReceiptSnapshot<Fact = unknown> {
+  /** The string entries of `claim.claimedActions`, in order. */
+  claimedActions: string[]
+  /** The string entries of `claim.citedEvidenceIds`, in order. */
+  citedEvidenceIds: string[]
+  /**
+   * The claimed facts, deep-copied: arrays, Dates and plain objects are new
+   * objects. Any other object (a Map, a class instance) is the same reference
+   * as in the claim. `{}` when the claim had no facts or `claimedFacts` was
+   * rejected. `Contradiction.claimedFact` and `currentFact` point into these
+   * same copies.
+   */
+  claimedFacts: Record<string, Fact>
+}
+
 /** The structured result of verifying an AgentClaim against a WorkPacket. */
 export interface ReceiptResult<Fact = unknown> {
   /**
    * True only when there are zero unauthorized actions, zero dropped
-   * evidence ids, zero contradictions, zero claim problems, and the claim's
+   * evidence ids, zero contradictions, zero claim problems, no uncovered fact
+   * (only when `requireCoverage` is set), and the claim's
    * packetId matches the packet under review. It means these checks found no mismatch, not that
    * the claim is true: facts with no matching currentState key, and all
    * facts when no currentState is supplied, are never compared. `coverage`
@@ -218,14 +260,27 @@ export interface ReceiptResult<Fact = unknown> {
    */
   claimProblems: string[]
   /**
+   * The claimed fact keys that blocked acceptance because `requireCoverage`
+   * was set and nothing was compared against them: exactly
+   * `coverage.uncheckedFactKeys` when the option is on, always `[]` when it is
+   * off. A new array on every call. Additive.
+   */
+  uncoveredFactKeys: string[]
+  /**
    * How many claimed facts were compared and which were not. Additive: it does
    * not change what `accepted` means. See ReceiptCoverage.
    */
   coverage: ReceiptCoverage
   /**
+   * What was judged, copied at the moment it was read. Additive. See
+   * ReceiptSnapshot.
+   */
+  snapshot: ReceiptSnapshot<Fact>
+  /**
    * Human-readable explanation of the decision, for logs. Untrusted ids and
    * keys appear JSON-quoted with control characters, line breaks and
-   * bidirectional formatting characters escaped as `\uXXXX`. For an accepted claim
+   * invisible format characters (zero-width space, bidirectional formatting
+   * characters, tag characters; not the zero-width joiner and non-joiner) escaped as `\uXXXX`. For an accepted claim
    * it says how many claimed facts were actually cross-checked. The wording
    * is not a stable API; branch on the structured fields instead.
    */

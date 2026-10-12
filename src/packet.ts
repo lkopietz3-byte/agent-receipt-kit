@@ -53,7 +53,9 @@ function generatePacketId(): string {
  *   a plain mutable object.
  * @throws TypeError if allowedActions or evidenceIds is not an array whose
  *   every position holds a string (a string would otherwise be spread into
- *   single characters and authorize them; a hole is refused), if `options`
+ *   single characters and authorize them; a hole is refused), if an entry
+ *   shows nothing (empty, or only whitespace and invisible characters: a
+ *   claim naming it is always rejected, so it could never be used), if `options`
  *   is not a plain object, or if `options.id` or `options.issuedAt` is given
  *   but is not a non-blank string.
  */
@@ -64,8 +66,8 @@ export function issuePacket<Scope = unknown, Authority = AuthorityLevel>(
   evidenceIds: string[],
   options: { id?: string; issuedAt?: string } = {},
 ): WorkPacket<Scope, Authority> {
-  const actions = snapshotStringArray(allowedActions, 'allowedActions')
-  const evidence = snapshotStringArray(evidenceIds, 'evidenceIds')
+  const actions = snapshotStringArray(allowedActions, 'allowedActions', true)
+  const evidence = snapshotStringArray(evidenceIds, 'evidenceIds', true)
   assertPlainRecord(options, 'options')
   const id = optionalId(options.id, 'options.id', generatePacketId)
   const issuedAt = optionalId(options.issuedAt, 'options.issuedAt', () => new Date().toISOString())

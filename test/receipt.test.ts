@@ -120,7 +120,13 @@ describe('verifyReceipt', () => {
       contradictions: [],
       packetMismatch: false,
       claimProblems: [],
+      uncoveredFactKeys: [],
       coverage: { stateSupplied: true, claimedFactCount: 1, comparedFactCount: 1, uncheckedFactKeys: [] },
+      snapshot: {
+        claimedActions: ['log-in', 'add-to-cart'],
+        citedEvidenceIds: ['screenshot-1', 'screenshot-2'],
+        claimedFacts: { cartItemCount: 1 },
+      },
     })
     expect(reason).toContain('matches the issued packet')
   })

@@ -1,69 +1,38 @@
-import type { AgentClaim, Contradiction, CurrentState, ReceiptCoverage, ReceiptResult, WorkPacket } from './types.js'
-import { assertId, assertObject, assertPlainRecord, describe, isPlainRecord, scanClaimList, snapshotStringArray } from './validate.js'
+import type { AgentClaim, Contradiction, CurrentState, ReceiptCoverage, ReceiptResult, VerifyOptions, WorkPacket } from './types.js'
+import { factsMatch, snapshotValue } from './snapshot.js'
+import type { SnapshotMemo } from './snapshot.js'
+import { assertId, assertObject, assertPlainRecord, describe, isPlainRecord, readVerifyOptions, scanClaimList, snapshotStringArray } from './validate.js'
 
 const hasOwn = (target: object, key: PropertyKey): boolean =>
   Object.prototype.hasOwnProperty.call(target, key)
-
-/**
- * Structural equality with zero dependencies, for comparing a claimed fact
- * with the same-keyed fact in a fresher current-state observation.
- *
- * Only JSON-shaped values are compared by content: primitives (0 equals -0,
- * NaN equals NaN), arrays (element by element, where a hole only matches a
- * hole) and plain or null-prototype objects (own enumerable string keys, any
- * order). Dates are compared by time value. Any other object (Map, Set,
- * RegExp, Error, typed arrays, class instances) matches only itself, so a
- * difference this function cannot see is reported as a contradiction instead
- * of being silently accepted. A value never matches one of a different kind.
- *
- * Two references to the very same object are equal without being walked, so a
- * circular object compared with itself matches. Two separate circular
- * structures, and two separate acyclic structures nested deeper than the
- * runtime's call stack allows, overflow the stack and throw a RangeError,
- * never an acceptance. The depth at which that happens depends on the
- * runtime, so it is not a fixed limit.
- */
-function factsMatch(a: unknown, b: unknown): boolean {
-  // `===` makes 0 and -0 equal (JSON serializes both as 0); Object.is makes
-  // NaN equal to NaN.
-  if (a === b || Object.is(a, b)) return true
-  if (Array.isArray(a) && Array.isArray(b)) {
-    if (a.length !== b.length) return false
-    for (const index of a.keys()) {
-      const present = hasOwn(a, index)
-      if (present !== hasOwn(b, index)) return false
-      if (present && !factsMatch(a[index], b[index])) return false
-    }
-    return true
-  }
-  if (a instanceof Date && b instanceof Date) return Object.is(a.getTime(), b.getTime())
-  // Everything else, including an array or a Date met by another kind of
-  // value, needs two plain records to match by content.
-  if (!isPlainRecord(a) || !isPlainRecord(b)) return false
-  const aKeys = Object.keys(a)
-  if (aKeys.length !== Object.keys(b).length) return false
-  return aKeys.every((key) => hasOwn(b, key) && factsMatch(a[key], b[key]))
-}
 
 /**
  * Formats an untrusted id or key for the human-readable `reason`. JSON
  * quoting escapes quotes, backslashes and C0 control characters (including
  * \n, \r and the terminal escape U+001B). The extra replace escapes DEL, C1
  * controls (including U+0085), U+2028/U+2029 (which some log viewers also treat
- * as line breaks) and the bidirectional formatting characters (U+061C,
- * U+200E/U+200F, U+202A to U+202E, U+2066 to U+2069) that can reorder the text
- * around an id. That keeps an agent-supplied string from forging extra log
- * lines, sending terminal escapes, or blurring where one id ends and the next
- * begins. Ordinary letters, emoji and invisible joiners are left alone. A
- * value that is not a string (a bad claim.packetId) is shown as its type, such
- * as `<number>`, never as its content.
+ * as line breaks) and every format (Cf) character: the zero-width space,
+ * the soft hyphen, the byte order mark, the bidirectional formatting
+ * characters that can reorder the text around an id, and the tag characters
+ * (U+E0000 to U+E007F) that can hide text no one can see. That keeps an
+ * agent-supplied string from forging extra log lines, sending terminal
+ * escapes, hiding text, or blurring where one id ends and the next begins.
+ * Each UTF-16 code unit of an escaped character is written as `\uXXXX`.
+ * Ordinary letters and emoji are left alone, and so are the zero-width joiner
+ * and non-joiner (U+200D, U+200C), which emoji sequences and several scripts
+ * need. A value that is not a string (a bad claim.packetId) is shown as its
+ * type, such as `<number>`, never as its content.
  */
 function quote(value: unknown): string {
   if (typeof value !== 'string') return `<${typeof value}>`
-  return JSON.stringify(value).replace(
-    /[\p{Cc}\p{Zl}\p{Zp}\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/gu,
-    (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`,
-  )
+  return JSON.stringify(value).replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, (character) => {
+    if (character === '\u200c' || character === '\u200d') return character
+    let escaped = ''
+    for (let index = 0; index < character.length; index += 1) {
+      escaped += `\\u${character.charCodeAt(index).toString(16).padStart(4, '0')}`
+    }
+    return escaped
+  })
 }
 
 function quoteAll(values: readonly string[]): string {
@@ -119,6 +88,13 @@ function acceptedReason(coverage: ReceiptCoverage): string {
  * only matches itself, so the comparison fails closed. The function is
  * synchronous, reads no clock and does not mutate its inputs.
  *
+ * Facts are copied once, up front, with every property read once, and the
+ * comparison and the result are computed from those copies (`result.snapshot`).
+ * The comparison never calls a method found on an agent-supplied value, so an
+ * array with its own `keys` or a Date with its own `getTime` cannot change the
+ * verdict. A fact it cannot see through is a contradiction, never an
+ * acceptance.
+ *
  * Who supplies what decides what happens. The packet and currentState come
  * from the caller's own code, so a malformed one throws a TypeError. The claim
  * is produced by the agent being checked, so a malformed claim is rejected in
@@ -130,13 +106,17 @@ function acceptedReason(coverage: ReceiptCoverage): string {
  * @param claim The agent's report. Treated as untrusted.
  * @param currentState Optional fresher observation, keyed like
  *   claim.claimedFacts. Omitted or null means no fact is cross-checked.
+ * @param options Optional. `requireCoverage: true` refuses acceptance while any
+ *   claimed fact was not compared with the current state (see VerifyOptions).
+ *   A bad options value throws a TypeError.
  * @returns A ReceiptResult naming every mismatch; see its field docs.
  * @throws TypeError if packet is not a non-null object (a string, an array
  *   and `null` all throw); if packet.id is missing, not a string, or shows
  *   nothing (empty, or only whitespace and invisible characters); if
  *   packet.allowedActions or packet.evidenceIds is not an array of strings, or
  *   has a hole (the message names the index); or if currentState is neither
- *   omitted, `null`, nor a plain or null-prototype object. Also, as in 0.1.1,
+ *   omitted, `null`, nor a plain or null-prototype object (an object whose
+ *   prototype is a bare null-prototype object is not plain). Also, as in 0.1.1,
  *   if claim is not a non-null object, or claim.claimedActions or
  *   claim.citedEvidenceIds is missing or not an array. Every other problem
  *   with the claim is reported in the result, not thrown: a non-string entry,
@@ -151,9 +131,11 @@ export function verifyReceipt<Scope = unknown, Authority = unknown, Fact = unkno
   packet: WorkPacket<Scope, Authority>,
   claim: AgentClaim<Fact>,
   currentState?: CurrentState<Fact>,
+  options?: VerifyOptions,
 ): ReceiptResult<Fact> {
   assertObject(packet, 'packet')
   assertObject(claim, 'claim')
+  const { requireCoverage } = readVerifyOptions(options)
   // Read every field of the caller's objects exactly once, validate what was
   // read, and compute from those same values.
   const packetId: unknown = packet.id
@@ -168,8 +150,13 @@ export function verifyReceipt<Scope = unknown, Authority = unknown, Fact = unkno
   const claimedActions = scanClaimList(claim.claimedActions, 'claim.claimedActions', claimProblems)
   const citedEvidenceIds = scanClaimList(claim.citedEvidenceIds, 'claim.citedEvidenceIds', claimProblems)
   const rawFacts: unknown = claim.claimedFacts
-  let claimedFacts: Record<string, unknown> | undefined
-  if (isPlainRecord(rawFacts)) claimedFacts = rawFacts
+  // Every fact is copied once, up front, with each property read once. The
+  // comparison and the result are computed from these copies, so a getter or a
+  // later edit cannot change what was judged. One memo is shared with the
+  // current state so an object present on both sides stays one object.
+  const memo: SnapshotMemo = new Map()
+  let claimedFacts: Record<string, unknown> = {}
+  if (isPlainRecord(rawFacts)) claimedFacts = snapshotValue(rawFacts, memo) as Record<string, unknown>
   else if (rawFacts !== undefined) {
     claimProblems.push(`claim.claimedFacts is not a plain object (got ${describe(rawFacts)}).`)
   }
@@ -185,32 +172,36 @@ export function verifyReceipt<Scope = unknown, Authority = unknown, Fact = unkno
   const droppedEvidenceIds = citedEvidenceIds.filter((id) => !issuedEvidence.has(id))
 
   const contradictions: Contradiction<Fact>[] = []
-  const claimedFactEntries = claimedFacts === undefined ? [] : Object.entries(claimedFacts as Record<string, Fact>)
+  const claimedFactKeys = Object.keys(claimedFacts)
   const uncheckedFactKeys: string[] = []
   let comparedFactCount = 0
-  for (const [key, claimedFact] of claimedFactEntries) {
+  for (const key of claimedFactKeys) {
     if (!stateSupplied || !hasOwn(currentState, key)) {
       uncheckedFactKeys.push(key)
       continue
     }
     comparedFactCount += 1
-    const currentFact = currentState[key] as Fact
+    const claimedFact = claimedFacts[key] as Fact
+    const currentFact = snapshotValue(currentState[key], memo) as Fact
     if (!factsMatch(claimedFact, currentFact)) {
       contradictions.push({ key, claimedFact, currentFact })
     }
   }
   const coverage: ReceiptCoverage = {
     stateSupplied,
-    claimedFactCount: claimedFactEntries.length,
+    claimedFactCount: claimedFactKeys.length,
     comparedFactCount,
     uncheckedFactKeys,
   }
+
+  const uncoveredFactKeys = requireCoverage ? [...uncheckedFactKeys] : []
 
   const accepted =
     !packetMismatch &&
     unauthorizedActions.length === 0 &&
     droppedEvidenceIds.length === 0 &&
     contradictions.length === 0 &&
+    uncoveredFactKeys.length === 0 &&
     claimProblems.length === 0
 
   const reasons: string[] = []
@@ -229,6 +220,12 @@ export function verifyReceipt<Scope = unknown, Authority = unknown, Fact = unkno
   if (contradictions.length) {
     reasons.push(`${contradictions.length} claimed fact(s) contradict the supplied current state: ${quoteAll(contradictions.map((item) => item.key))}.`)
   }
+  if (uncoveredFactKeys.length) {
+    const why = stateSupplied
+      ? 'the supplied current state has no value for them'
+      : 'no current state was supplied'
+    reasons.push(`${uncoveredFactKeys.length} claimed fact(s) are not covered by the supplied current state: ${quoteAll(uncoveredFactKeys)} (${why}), and requireCoverage is set.`)
+  }
 
   return {
     accepted,
@@ -237,7 +234,13 @@ export function verifyReceipt<Scope = unknown, Authority = unknown, Fact = unkno
     contradictions,
     packetMismatch,
     claimProblems,
+    uncoveredFactKeys,
     coverage,
+    snapshot: {
+      claimedActions,
+      citedEvidenceIds,
+      claimedFacts: claimedFacts as Record<string, Fact>,
+    },
     reason: accepted ? acceptedReason(coverage) : reasons.join(' '),
   }
 }

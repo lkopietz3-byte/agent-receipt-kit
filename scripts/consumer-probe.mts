@@ -13,6 +13,7 @@ import {
   type ReceiptResult,
   type RefutationEntry,
   type RefutationTrail,
+  type VerifyOptions,
   type WorkPacket,
 } from 'agent-receipt-kit';
 
@@ -48,10 +49,15 @@ const observed: boolean = coverage.stateSupplied;
 const firstContradiction: Contradiction<number> | undefined = result.contradictions[0];
 const claimedCount: number | undefined = firstContradiction?.claimedFact;
 verifyReceipt(tiered, claim);
+const strict: VerifyOptions = { requireCoverage: true };
+const strictResult: ReceiptResult<number> = verifyReceipt(packet, claim, state, strict);
+const uncovered: string[] = strictResult.uncoveredFactKeys;
+// @ts-expect-error requireCoverage must be a boolean.
+verifyReceipt(packet, claim, state, { requireCoverage: 'yes' });
 
 const trail: RefutationTrail<number> = createRefutationTrail<number>();
 const entry: RefutationEntry<number> = trail.record(claim, result);
 const found: RefutationEntry<number> | undefined = trail.find(entry.id);
 const all: RefutationEntry<number>[] = trail.list();
 
-export { accepted, all, claimedCount, compared, found, observed, problems, unchecked };
+export { uncovered, accepted, all, claimedCount, compared, found, observed, problems, unchecked };

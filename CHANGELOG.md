@@ -4,6 +4,52 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+## [0.3.0] - unreleased
+
+Minor release: stricter comparison and validation, plus an opt-in coverage
+rule. Verdicts move toward rejection, or from a wrong contradiction to a right
+match (a cross-realm Date with an equal time used to contradict and now
+matches). Some malformed input that used to be accepted is now thrown or
+rejected.
+
+### Breaking changes
+
+- **`issuePacket` throws a `TypeError` for an empty or blank entry in `allowedActions` or `evidenceIds`.** Migration: drop blank entries from both lists before issuing; fix whatever produced the blank id. A hand-built packet still verifies; the blank entry matches nothing.
+- **A fact object whose prototype is a bare `Object.create(null)` object is no longer plain.** As `claimedFacts` the claim is rejected (`claimProblems`); as `currentState` it throws a `TypeError`; nested inside a fact it matches only itself. Migration: pass plain objects or `Object.create(null)` objects directly, not objects layered on a null-prototype prototype.
+- **Arrays and Dates are compared on their own enumerable string keys as well**, so an extra property on an array or a Date is now a difference. Migration: keep facts JSON-shaped, or delete the extra property before comparing.
+- **`Contradiction.claimedFact` and `currentFact` are now copies** (equal in content; a `Map` or class instance is still the same reference). Migration: compare by value, not by reference to the original claim object.
+- **Claimed facts are copied before they are compared**, so a deep fact with no `currentState` now costs time proportional to its size. Migration: bound the depth and size of untrusted facts before calling.
+- **Some claims that used to pass now get the verdict their content earns:** an array with its own `keys` method, a Date with its own `getTime`, or an inherited key hidden behind a null-prototype prototype. Migration: none needed for honest input.
+- **`ReceiptResult` has two new fields, `snapshot` and `uncoveredFactKeys`.** Migration: code that compares a whole result with a deep-equality assertion needs the new fields in its expected value.
+
+### Added
+
+- **`requireCoverage` option** (fourth argument of `verifyReceipt`, type `VerifyOptions`, also exported). With `{ requireCoverage: true }`, a claim is not accepted while any claimed fact was not compared with the current state, either because no state was supplied or because the state has no own key for it. The keys are in the new `ReceiptResult.uncoveredFactKeys` (always `[]` when the option is off) and named in `reason`. A claim that asserts no facts is still accepted. A bad options value throws a `TypeError`, including an unknown key. Default is off, so existing verdicts do not change.
+
+### Fixed
+
+- **An array with its own `keys` method no longer matches any array of the same length.** The comparison called `keys()` on the claimed array, so an agent could hand it an empty iterator. Arrays are now compared by their own keys and values, without calling any method on the value. The same change removes a hang on a sparse array with a huge `length`.
+- **Facts inherited through a null-prototype prototype can no longer vanish.** An object whose prototype was a bare `Object.create(null)` object counted as plain, so inherited keys were invisible to the comparison and to `coverage` ("asserts no facts"). Plain now means a prototype of `null` or an `Object.prototype` (any realm, recognized by structure). Anything else is not plain.
+- **A Date with its own `getTime` is compared by its real time value.** The built-in `Date.prototype.getTime` is used after a brand check, so the claimed value cannot answer for itself. A Date from another realm (a `vm` context or an iframe) with an equal time now matches instead of producing a false contradiction. Two invalid Dates still match each other.
+- **`reason` escapes the zero-width space, the soft hyphen, the byte order mark and tag characters** (every format character except the zero-width joiner and non-joiner, which emoji sequences and several scripts need). Characters outside the Basic Multilingual Plane are written as two `\uXXXX` escapes.
+- **`issuePacket` rejects an empty or blank entry in `allowedActions` and `evidenceIds`.** A claim naming one was always rejected as blank, so the entry could never be used.
+- **The Braille blank (U+2800) and control characters count as blank** in ids, claim lists and `issuePacket` input.
+- **A Proxy-wrapped array can no longer shorten itself between the length check and the copy.** The array length is now read once, so a claimed array that reported a length of 1 and then 0 can no longer be copied as empty and match an empty observed array.
+
+### Changed
+
+- **`ReceiptResult.snapshot`** (type `ReceiptSnapshot`, also exported): the string entries of `claimedActions` and `citedEvidenceIds` and a deep copy of the claimed facts, made while the claim is read. Use it instead of the claim object after an acceptance; a getter or later edit can no longer change what you accepted.
+
+### Documented
+
+- The README opening says who the kit is for and what it does not do, and says that free-text agent logs need claim extraction before this kit can compare anything. Hedged wording is the caller's decision at that step.
+- Limits added: comparison is exact equality (no tolerance or normalization; `undefined` versus a missing key), packet lists are exact membership (no prefix or glob), repeated entries are reported each time, and an unusable claim list throws, so wrap raw agent output.
+- The ENGINEERING coverage and mutation numbers are marked as measured at 0.2.0.
+- Symbol keys and non-enumerable properties are not compared, on either side. Keep facts JSON-shaped.
+- A blank entry in a hand-built packet's lists is not checked by `verifyReceipt` (the packet is your own input); it can never match a valid claim.
+
 ## [0.2.1] - 2026-10-07
 
 No change to the library's behavior or API.

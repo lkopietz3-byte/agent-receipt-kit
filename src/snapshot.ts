@@ -35,10 +35,18 @@ function isArrayLength(length: unknown): length is number {
 
 type Kind = 'array' | 'date' | 'record'
 
+// The length kindOf read for the array it just classified (single-threaded, read at once).
+let lastLength = 0
+
 /** Which comparable container a value is, or `undefined` for everything compared by identity. */
 function kindOf(value: unknown): Kind | undefined {
   if (typeof value !== 'object' || value === null) return undefined
-  if (Array.isArray(value)) return isArrayLength(value.length) ? 'array' : undefined
+  if (Array.isArray(value)) {
+    const length: unknown = value.length
+    if (!isArrayLength(length)) return undefined
+    lastLength = length
+    return 'array'
+  }
   // Plain objects first: the Date brand check throws for every non-Date, and a
   // throw per object is slow on large facts.
   if (isPlainRecord(value)) return 'record'
@@ -74,7 +82,9 @@ export function snapshotValue(root: unknown, memo: SnapshotMemo): unknown {
     const seen = memo.get(source)
     if (seen !== undefined) return seen
     let copy: object
-    if (kind === 'array') copy = new Array<unknown>((source as unknown[]).length)
+    // kindOf validated one read of the length; allocate from that same read
+    // (kindOf stores it) so a Proxy cannot answer differently the second time.
+    if (kind === 'array') copy = new Array<unknown>(lastLength)
     else if (kind === 'date') copy = new Date(timeOf(source) as number)
     else copy = {}
     memo.set(source, copy)

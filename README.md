@@ -484,6 +484,10 @@ example `'observe' | 'draft' | 'sandbox' | 'production'`).
 - **A repeated entry is reported every time.** A claim listing the same
   unauthorized action 5,000 times produces 5,000 entries and a long `reason`.
   Bound the size of an agent's lists before calling.
+- **Options are checked by their enumerable keys.** A typo in a key defined as
+  non-enumerable (for example through `Object.defineProperty`) is not
+  rejected; plain object literals, which is how options are normally written,
+  are checked.
 - **Contradictions are surfaced, not resolved.** Deciding whether to trust the
   claim, trust the fresh read, or look again by hand is up to a person or your
   own policy.

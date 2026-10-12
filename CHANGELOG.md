@@ -36,6 +36,7 @@ rejected.
 - **`reason` escapes the zero-width space, the soft hyphen, the byte order mark and tag characters** (every format character except the zero-width joiner and non-joiner, which emoji sequences and several scripts need). Characters outside the Basic Multilingual Plane are written as two `\uXXXX` escapes.
 - **`issuePacket` rejects an empty or blank entry in `allowedActions` and `evidenceIds`.** A claim naming one was always rejected as blank, so the entry could never be used.
 - **The Braille blank (U+2800) and control characters count as blank** in ids, claim lists and `issuePacket` input.
+- **A Proxy-wrapped array can no longer shorten itself between the length check and the copy.** The array length is now read once, so a claimed array that reported a length of 1 and then 0 can no longer be copied as empty and match an empty observed array.
 
 ### Changed
 

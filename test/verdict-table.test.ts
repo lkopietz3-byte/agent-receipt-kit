@@ -407,6 +407,22 @@ describe('verdict table: found by breaking the fix (hostile probes must not pass
     expect(result.snapshot.claimedFacts.a).toBe(result.contradictions[0]?.claimedFact)
   })
 
+  it('a Proxy array that answers length differently on each read is read once, so an empty observed array contradicts', () => {
+    let reads = 0
+    const lying = new Proxy(new Array<unknown>(1), {
+      get(target, key, receiver): unknown {
+        if (key === 'length') {
+          reads += 1
+          return reads === 1 ? 1 : 0
+        }
+        return Reflect.get(target, key, receiver) as unknown
+      },
+    })
+    const result = check({ x: lying }, { x: [] })
+    expect(result.accepted).toBe(false)
+    expect(result.contradictions.map((c) => c.key)).toEqual(['x'])
+  })
+
   it('a very deep fact with no current state is accepted without a stack overflow', () => {
     let deep: unknown = 1
     for (let level = 0; level < 100_000; level += 1) deep = { deep }

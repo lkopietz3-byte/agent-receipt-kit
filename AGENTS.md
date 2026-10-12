@@ -1,4 +1,4 @@
-# agent-receipt-kit — agent instructions
+# agent-receipt-kit: agent instructions
 
 Dependency-free TypeScript checks that compare an AI agent's report with the actions and evidence ids it was issued and with a caller-supplied observation.
 
@@ -30,5 +30,5 @@ See [docs/REVIEW_READINESS.md](docs/REVIEW_READINESS.md) for review cadence, dec
 ## Code Review Rules
 
 - Preserve exact packet ID, action allowlist and evidence-ID membership checks plus contradiction reporting. Unauthorized actions, foreign evidence and mismatched packets must be rejected.
-- Keep malformed caller packets/currentState as input errors and agent-claim problems as documented rejections. Coverage remains separate from acceptance: accepted does not establish unchecked facts or independent observation when the agent controls currentState.
+- Keep malformed caller packets/currentState as input errors and agent-claim problems as documented rejections. Coverage remains separate from acceptance: accepted does not establish unchecked facts or independent observation when the agent controls currentState. The only way to make an unchecked fact block acceptance is the opt-in `requireCoverage` option; never make it the default silently, because that is a verdict change.
 - Keep scope/authority metadata and the in-memory refutation trail within their documented limits. Protected packet storage, application enforcement, replay policy and durable/tamper-evident persistence are consumer responsibilities; the kit does not enforce actions or authenticate agents.

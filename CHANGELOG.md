@@ -6,6 +6,28 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - unreleased
+
+Minor release: stricter comparison and validation, plus an opt-in coverage
+rule. Verdicts move toward rejection, or from a wrong contradiction to a right
+match (a cross-realm Date with an equal time used to contradict and now
+matches). Some malformed input that used to be accepted is now thrown or
+rejected.
+
+### Breaking changes
+
+- **`issuePacket` throws a `TypeError` for an empty or blank entry in `allowedActions` or `evidenceIds`.** Migration: drop blank entries from both lists before issuing; fix whatever produced the blank id. A hand-built packet still verifies; the blank entry matches nothing.
+- **A fact object whose prototype is a bare `Object.create(null)` object is no longer plain.** As `claimedFacts` the claim is rejected (`claimProblems`); as `currentState` it throws a `TypeError`; nested inside a fact it matches only itself. Migration: pass plain objects or `Object.create(null)` objects directly, not objects layered on a null-prototype prototype.
+- **Arrays and Dates are compared on their own enumerable string keys as well**, so an extra property on an array or a Date is now a difference. Migration: keep facts JSON-shaped, or delete the extra property before comparing.
+- **`Contradiction.claimedFact` and `currentFact` are now copies** (equal in content; a `Map` or class instance is still the same reference). Migration: compare by value, not by reference to the original claim object.
+- **Claimed facts are copied before they are compared**, so a deep fact with no `currentState` now costs time proportional to its size. Migration: bound the depth and size of untrusted facts before calling.
+- **Some claims that used to pass now get the verdict their content earns:** an array with its own `keys` method, a Date with its own `getTime`, or an inherited key hidden behind a null-prototype prototype. Migration: none needed for honest input.
+- **`ReceiptResult` has two new fields, `snapshot` and `uncoveredFactKeys`.** Migration: code that compares a whole result with a deep-equality assertion needs the new fields in its expected value.
+
+### Added
+
+- **`requireCoverage` option** (fourth argument of `verifyReceipt`, type `VerifyOptions`, also exported). With `{ requireCoverage: true }`, a claim is not accepted while any claimed fact was not compared with the current state, either because no state was supplied or because the state has no own key for it. The keys are in the new `ReceiptResult.uncoveredFactKeys` (always `[]` when the option is off) and named in `reason`. A claim that asserts no facts is still accepted. A bad options value throws a `TypeError`, including an unknown key. Default is off, so existing verdicts do not change.
+
 ### Fixed
 
 - **An array with its own `keys` method no longer matches any array of the same length.** The comparison called `keys()` on the claimed array, so an agent could hand it an empty iterator. Arrays are now compared by their own keys and values, without calling any method on the value. The same change removes a hang on a sparse array with a huge `length`.
@@ -17,15 +39,13 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
-- **`ReceiptResult` has a new field, `snapshot`** (type `ReceiptSnapshot`, also exported): the string entries of `claimedActions` and `citedEvidenceIds` and a deep copy of the claimed facts, made while the claim is read. Use it instead of the claim object after an acceptance; a getter or later edit can no longer change what you accepted. This is additive.
-- **`Contradiction.claimedFact` and `currentFact` are now the copied values**, not the original objects (equal in content; a `Map` or class instance is still the same reference). `snapshot.claimedFacts` shares those copies.
-- **An object whose prototype is a bare null-prototype object is no longer plain.** As `claimedFacts` it rejects the claim (`claimProblems`), as `currentState` it throws a `TypeError`, and nested inside a fact it matches only itself.
-- **`issuePacket` throws a `TypeError` for a blank list entry** (see Fixed). Build the packet object yourself if you really need one; `verifyReceipt` still accepts it and the entry still matches nothing.
-- **Arrays and Dates are compared on their own enumerable string keys as well**, so an extra property on an array or a Date now counts as a difference.
-- **Claimed facts are copied before they are compared.** A deep fact with no `currentState` now costs time proportional to its size instead of nothing. The copy is iterative, so depth alone does not overflow the stack there; comparing two separate deep values still throws a `RangeError`, as before.
+- **`ReceiptResult.snapshot`** (type `ReceiptSnapshot`, also exported): the string entries of `claimedActions` and `citedEvidenceIds` and a deep copy of the claimed facts, made while the claim is read. Use it instead of the claim object after an acceptance; a getter or later edit can no longer change what you accepted.
 
 ### Documented
 
+- The README opening says who the kit is for and what it does not do, and says that free-text agent logs need claim extraction before this kit can compare anything. Hedged wording is the caller's decision at that step.
+- Limits added: comparison is exact equality (no tolerance or normalization; `undefined` versus a missing key), packet lists are exact membership (no prefix or glob), repeated entries are reported each time, and an unusable claim list throws, so wrap raw agent output.
+- The ENGINEERING coverage and mutation numbers are marked as measured at 0.2.0.
 - Symbol keys and non-enumerable properties are not compared, on either side. Keep facts JSON-shaped.
 - A blank entry in a hand-built packet's lists is not checked by `verifyReceipt` (the packet is your own input); it can never match a valid claim.
 

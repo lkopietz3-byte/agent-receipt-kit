@@ -1,7 +1,7 @@
-import type { AgentClaim, Contradiction, CurrentState, ReceiptCoverage, ReceiptResult, WorkPacket } from './types.js'
+import type { AgentClaim, Contradiction, CurrentState, ReceiptCoverage, ReceiptResult, VerifyOptions, WorkPacket } from './types.js'
 import { factsMatch, snapshotValue } from './snapshot.js'
 import type { SnapshotMemo } from './snapshot.js'
-import { assertId, assertObject, assertPlainRecord, describe, isPlainRecord, scanClaimList, snapshotStringArray } from './validate.js'
+import { assertId, assertObject, assertPlainRecord, describe, isPlainRecord, readVerifyOptions, scanClaimList, snapshotStringArray } from './validate.js'
 
 const hasOwn = (target: object, key: PropertyKey): boolean =>
   Object.prototype.hasOwnProperty.call(target, key)
@@ -106,6 +106,9 @@ function acceptedReason(coverage: ReceiptCoverage): string {
  * @param claim The agent's report. Treated as untrusted.
  * @param currentState Optional fresher observation, keyed like
  *   claim.claimedFacts. Omitted or null means no fact is cross-checked.
+ * @param options Optional. `requireCoverage: true` refuses acceptance while any
+ *   claimed fact was not compared with the current state (see VerifyOptions).
+ *   A bad options value throws a TypeError.
  * @returns A ReceiptResult naming every mismatch; see its field docs.
  * @throws TypeError if packet is not a non-null object (a string, an array
  *   and `null` all throw); if packet.id is missing, not a string, or shows
@@ -128,9 +131,11 @@ export function verifyReceipt<Scope = unknown, Authority = unknown, Fact = unkno
   packet: WorkPacket<Scope, Authority>,
   claim: AgentClaim<Fact>,
   currentState?: CurrentState<Fact>,
+  options?: VerifyOptions,
 ): ReceiptResult<Fact> {
   assertObject(packet, 'packet')
   assertObject(claim, 'claim')
+  const { requireCoverage } = readVerifyOptions(options)
   // Read every field of the caller's objects exactly once, validate what was
   // read, and compute from those same values.
   const packetId: unknown = packet.id
@@ -189,11 +194,14 @@ export function verifyReceipt<Scope = unknown, Authority = unknown, Fact = unkno
     uncheckedFactKeys,
   }
 
+  const uncoveredFactKeys = requireCoverage ? [...uncheckedFactKeys] : []
+
   const accepted =
     !packetMismatch &&
     unauthorizedActions.length === 0 &&
     droppedEvidenceIds.length === 0 &&
     contradictions.length === 0 &&
+    uncoveredFactKeys.length === 0 &&
     claimProblems.length === 0
 
   const reasons: string[] = []
@@ -212,6 +220,12 @@ export function verifyReceipt<Scope = unknown, Authority = unknown, Fact = unkno
   if (contradictions.length) {
     reasons.push(`${contradictions.length} claimed fact(s) contradict the supplied current state: ${quoteAll(contradictions.map((item) => item.key))}.`)
   }
+  if (uncoveredFactKeys.length) {
+    const why = stateSupplied
+      ? 'the supplied current state has no value for them'
+      : 'no current state was supplied'
+    reasons.push(`${uncoveredFactKeys.length} claimed fact(s) are not covered by the supplied current state: ${quoteAll(uncoveredFactKeys)} (${why}), and requireCoverage is set.`)
+  }
 
   return {
     accepted,
@@ -220,6 +234,7 @@ export function verifyReceipt<Scope = unknown, Authority = unknown, Fact = unkno
     contradictions,
     packetMismatch,
     claimProblems,
+    uncoveredFactKeys,
     coverage,
     snapshot: {
       claimedActions,

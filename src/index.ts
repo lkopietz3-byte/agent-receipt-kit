@@ -7,6 +7,7 @@ export type {
   ReceiptCoverage,
   ReceiptSnapshot,
   ReceiptResult,
+  VerifyOptions,
 } from './types.js'
 
 export { issuePacket } from './packet.js'

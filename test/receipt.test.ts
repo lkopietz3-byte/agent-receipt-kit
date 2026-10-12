@@ -120,6 +120,7 @@ describe('verifyReceipt', () => {
       contradictions: [],
       packetMismatch: false,
       claimProblems: [],
+      uncoveredFactKeys: [],
       coverage: { stateSupplied: true, claimedFactCount: 1, comparedFactCount: 1, uncheckedFactKeys: [] },
       snapshot: {
         claimedActions: ['log-in', 'add-to-cart'],

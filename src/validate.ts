@@ -205,3 +205,24 @@ export function scanClaimList(value: unknown, label: string, problems: string[])
   }
   return strings
 }
+
+/**
+ * Reads and validates the options argument of verifyReceipt. Each option is
+ * read once. Options come from the caller's own code, so anything unexpected
+ * throws: a non-object, an unknown key (a typo must not silently switch a
+ * check off) or a non-boolean `requireCoverage`.
+ */
+export function readVerifyOptions(options: unknown): { requireCoverage: boolean } {
+  if (options === undefined) return { requireCoverage: false }
+  if (!isPlainRecord(options)) {
+    throw new TypeError(`options must be a plain object when given (got ${describe(options)}).`)
+  }
+  for (const key of Object.keys(options)) {
+    if (key !== 'requireCoverage') throw new TypeError(`options has an unknown key ${JSON.stringify(key.slice(0, 40))}.`)
+  }
+  const requireCoverage: unknown = options.requireCoverage
+  if (requireCoverage !== undefined && typeof requireCoverage !== 'boolean') {
+    throw new TypeError(`options.requireCoverage must be a boolean (got ${describe(requireCoverage)}).`)
+  }
+  return { requireCoverage: requireCoverage === true }
+}

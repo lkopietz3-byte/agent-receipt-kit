@@ -141,6 +141,22 @@ export interface AgentClaim<Fact = unknown> {
  */
 export type CurrentState<Fact = unknown> = Record<string, Fact>
 
+/**
+ * Options for `verifyReceipt`. They come from your own code, so a bad one
+ * (not an object, an unknown key, a non-boolean value) throws a TypeError.
+ */
+export interface VerifyOptions {
+  /**
+   * When true, a claim is not accepted while any fact it asserts was not
+   * compared with a same-keyed value in `currentState`: either no state was
+   * supplied, or the state has no own key for that fact. Those keys are listed
+   * in `ReceiptResult.uncoveredFactKeys`. A claim that asserts no facts is
+   * still accepted. Default false, which keeps the plain meaning of `accepted`
+   * (no mismatch found among the things that were compared).
+   */
+  requireCoverage?: boolean
+}
+
 /** One fact where a claim and the supplied current state disagree. */
 export interface Contradiction<Fact = unknown> {
   /** The fact key that disagreed (matches a key in claimedFacts / currentState). */
@@ -209,7 +225,8 @@ export interface ReceiptSnapshot<Fact = unknown> {
 export interface ReceiptResult<Fact = unknown> {
   /**
    * True only when there are zero unauthorized actions, zero dropped
-   * evidence ids, zero contradictions, zero claim problems, and the claim's
+   * evidence ids, zero contradictions, zero claim problems, no uncovered fact
+   * (only when `requireCoverage` is set), and the claim's
    * packetId matches the packet under review. It means these checks found no mismatch, not that
    * the claim is true: facts with no matching currentState key, and all
    * facts when no currentState is supplied, are never compared. `coverage`
@@ -242,6 +259,13 @@ export interface ReceiptResult<Fact = unknown> {
    * reports at most 20 problems plus one line counting the rest. Additive.
    */
   claimProblems: string[]
+  /**
+   * The claimed fact keys that blocked acceptance because `requireCoverage`
+   * was set and nothing was compared against them: exactly
+   * `coverage.uncheckedFactKeys` when the option is on, always `[]` when it is
+   * off. A new array on every call. Additive.
+   */
+  uncoveredFactKeys: string[]
   /**
    * How many claimed facts were compared and which were not. Additive: it does
    * not change what `accepted` means. See ReceiptCoverage.

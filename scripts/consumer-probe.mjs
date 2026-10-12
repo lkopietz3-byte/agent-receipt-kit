@@ -87,6 +87,14 @@ assert.deepEqual(numeric.claimProblems, ['claim.claimedActions[0] is not a strin
 assert.deepEqual(numeric.unauthorizedActions, []);
 assert.deepEqual(ok.claimProblems, []);
 
+// requireCoverage refuses a fact nothing was compared against.
+const strictClaim = { ...claim, claimedFacts: { allTestsPass: true } };
+assert.equal(verifyReceipt(packet, strictClaim).accepted, true);
+const strict = verifyReceipt(packet, strictClaim, undefined, { requireCoverage: true });
+assert.equal(strict.accepted, false);
+assert.deepEqual(strict.uncoveredFactKeys, ['allTestsPass']);
+assert.throws(() => verifyReceipt(packet, claim, undefined, { requireCoverge: true }), { name: 'TypeError' });
+
 assert.throws(() => issuePacket({}, 'local', 'log-in', []), {
   name: 'TypeError',
   message: 'allowedActions must be an array (got string).',

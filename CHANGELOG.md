@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-22
+
+Renamed from `agent-receipt-kit` to `@evidencekit/agent-receipts`, as part of the Evidence Kit family. No behavior change and no API change. Install with `npm install @evidencekit/agent-receipts`; the repository moved to `evidencekit/agent-receipts`.
+
 ## [0.3.0] - unreleased
 
 Minor release: stricter comparison and validation, plus an opt-in coverage

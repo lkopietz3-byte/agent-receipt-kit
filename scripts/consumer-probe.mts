@@ -15,7 +15,7 @@ import {
   type RefutationTrail,
   type VerifyOptions,
   type WorkPacket,
-} from 'agent-receipt-kit';
+} from '@evidencekit/agent-receipts';
 
 interface BrowserScope {
   site: string;

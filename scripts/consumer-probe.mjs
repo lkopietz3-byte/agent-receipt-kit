@@ -1,7 +1,7 @@
 // Consumer probe: runs from a clean project that installed the packed
 // tarball, imports the package by name, and checks real outputs.
 import assert from 'node:assert/strict';
-import { createRefutationTrail, issuePacket, verifyReceipt } from 'agent-receipt-kit';
+import { createRefutationTrail, issuePacket, verifyReceipt } from '@evidencekit/agent-receipts';
 
 const packet = issuePacket(
   { site: 'shop.example.com' },

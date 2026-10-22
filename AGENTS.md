@@ -1,4 +1,4 @@
-# agent-receipt-kit: agent instructions
+# @evidencekit/agent-receipts: agent instructions
 
 Dependency-free TypeScript checks that compare an AI agent's report with the actions and evidence ids it was issued and with a caller-supplied observation.
 

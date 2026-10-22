@@ -1,18 +1,18 @@
-# Project context: agent-receipt-kit
+# Project context: @evidencekit/agent-receipts
 
 Mapped on **2026-09-26** from connected GitHub, Vercel, and Supabase metadata. This file is a navigation aid; verify current code and service settings before acting.
 
 ## Identity and repository settings
 
-- Repository: [lkopietz3-byte/agent-receipt-kit](https://github.com/lkopietz3-byte/agent-receipt-kit)
+- Repository: [evidencekit/agent-receipts](https://github.com/evidencekit/agent-receipts)
 - Purpose: A dependency-free TypeScript library that compares an AI agent’s report with the actions and evidence ids it was issued and, optionally, with an observation the caller supplies. It does not check that the report is true or that the observation is fresh or independent (see the README’s “Honest limits”).
 - GitHub visibility: **public**; default branch: **`main`**; archived: **no**.
 - Product stage, owner, production health, and GitHub protection/settings beyond the fields above: **not verified**.
 
 ## Starting points
 
-- Purpose source: [README.md](https://github.com/lkopietz3-byte/agent-receipt-kit/blob/main/README.md)
-- [package.json](https://github.com/lkopietz3-byte/agent-receipt-kit/blob/main/package.json) contains scripts and declared dependencies; check the current file before using commands.
+- Purpose source: [README.md](https://github.com/evidencekit/agent-receipts/blob/main/README.md)
+- [package.json](https://github.com/evidencekit/agent-receipts/blob/main/package.json) contains scripts and declared dependencies; check the current file before using commands.
 
 ## Service map
 

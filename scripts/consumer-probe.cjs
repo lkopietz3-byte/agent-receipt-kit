@@ -4,7 +4,7 @@
 // because a .cjs extension always forces CommonJS. Run by verify-package.mjs.
 const assert = require('node:assert/strict');
 
-const { issuePacket, verifyReceipt, createRefutationTrail } = require('agent-receipt-kit');
+const { issuePacket, verifyReceipt, createRefutationTrail } = require('@evidencekit/agent-receipts');
 
 const packet = issuePacket({ site: 'shop.example.com' }, 'local', ['log-in'], ['screenshot-1'], {
   id: 'pkt-cjs-probe',

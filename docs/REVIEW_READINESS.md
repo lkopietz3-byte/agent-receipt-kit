@@ -1,6 +1,6 @@
 # Review and consumer integration readiness
 
-Updated September 30, 2026 against main `1527170a870a16589b18e060c8b21ab80c4eb93b`. The npm registry reported `agent-receipt-kit@0.2.0` on that date. This is review guidance for future changes and a consumer integration task; it is not a product audit, registry integrity check or marketing certification.
+Updated September 30, 2026 against main `1527170a870a16589b18e060c8b21ab80c4eb93b`. The npm registry reported `agent-receipt-kit@0.2.0` (now published as `@evidencekit/agent-receipts`) on that date. This is review guidance for future changes and a consumer integration task; it is not a product audit, registry integrity check or marketing certification.
 
 ## Review cadence
 

@@ -1,5 +1,5 @@
 {
-  "agent-receipt-kit": [
+  "@evidencekit/agent-receipts": [
     "createRefutationTrail",
     "issuePacket",
     "verifyReceipt"

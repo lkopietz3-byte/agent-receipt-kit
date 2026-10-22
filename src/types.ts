@@ -1,4 +1,4 @@
-// Core types for agent-receipt-kit.
+// Core types for Evidence Kit agent receipts.
 //
 // The pattern: before an agent (a coding agent, a browser-automation agent, a
 // data-processing agent, a customer-service agent, anything that acts and

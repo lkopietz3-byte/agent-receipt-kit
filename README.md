@@ -1,8 +1,10 @@
-# Agent Receipt Kit
+# Agent Receipts
 
-**[Try it in your browser →](https://lkopietz3-byte.github.io/honesty-kits/#agent-receipt-kit)** · Part of [honesty kits](https://github.com/lkopietz3-byte/honesty-kits), a family of small checks for the claims an AI product makes.
+**[Try it in your browser →](https://evidencekit.github.io/)** · Part of [Evidence Kit](https://github.com/evidencekit): checks that tie AI output and public claims back to their evidence.
 
-Agent Receipt Kit is a small, dependency-free TypeScript library for checking
+Formerly published as `agent-receipt-kit`.
+
+Agent Receipts is a small, dependency-free TypeScript library for checking
 what an AI agent says it did. Before the agent runs, you issue a work packet
 that lists the actions it may take and the evidence ids it may cite. When the
 agent reports back, `verifyReceipt` compares the report with that packet and,
@@ -45,7 +47,7 @@ Do not use it as:
 ## Install
 
 ```bash
-npm install agent-receipt-kit
+npm install @evidencekit/agent-receipts
 ```
 
 Or build from source: clone the repository and run `npm install && npm run build`.
@@ -57,8 +59,8 @@ load it. `require()` also works where Node can `require(esm)`:
 
 | How you load it | Node 20.19+ | Node 22.12+ | Node 24 and 26 | Older Node 20 or 22 |
 | --- | --- | --- | --- | --- |
-| `import { verifyReceipt } from 'agent-receipt-kit'` | works | works | works | works |
-| `require('agent-receipt-kit')` | works | works | works | fails (no `require(esm)`); use `import()` |
+| `import { verifyReceipt } from '@evidencekit/agent-receipts'` | works | works | works | works |
+| `require('@evidencekit/agent-receipts')` | works | works | works | fails (no `require(esm)`); use `import()` |
 
 Recommended runtimes are Node 22 and 24 (LTS) and Node 26 (current). Node 20 is
 end-of-life. CI still runs the tests and the installed-package probes on Node
@@ -69,7 +71,7 @@ is compatibility testing, not a recommendation. `engines` in `package.json` is
 ## Quickstart
 
 ```js
-import { createRefutationTrail, issuePacket, verifyReceipt } from 'agent-receipt-kit'
+import { createRefutationTrail, issuePacket, verifyReceipt } from '@evidencekit/agent-receipts'
 
 // 1. Before the agent runs: record what it may do and what it may cite.
 const packet = issuePacket(
@@ -129,7 +131,7 @@ authorization you are handing the agent. Keep it; you need it to verify what
 comes back.
 
 ```ts
-import { issuePacket } from 'agent-receipt-kit'
+import { issuePacket } from '@evidencekit/agent-receipts'
 
 const packet = issuePacket(
   { site: 'shop.example.com', checkoutFlow: 'guest' }, // scope: yours to define
@@ -162,7 +164,7 @@ Call this when the agent reports back. It returns a structured result, not a
 bare boolean, so you can see exactly what failed.
 
 ```ts
-import { verifyReceipt } from 'agent-receipt-kit'
+import { verifyReceipt } from '@evidencekit/agent-receipts'
 
 const claim = {
   packetId: packet.id,
@@ -368,7 +370,7 @@ returns an in-memory, append-only log for exactly that: keep the claim and
 the result that explains why it was not accepted.
 
 ```ts
-import { createRefutationTrail } from 'agent-receipt-kit'
+import { createRefutationTrail } from '@evidencekit/agent-receipts'
 
 const trail = createRefutationTrail()
 
@@ -414,7 +416,7 @@ authorized to transform rows in one dataset and cite specific input-row ids
 as evidence for its output:
 
 ```ts
-import { issuePacket, verifyReceipt } from 'agent-receipt-kit'
+import { issuePacket, verifyReceipt } from '@evidencekit/agent-receipts'
 
 const packet = issuePacket(
   { dataset: 'orders_2026_07', operation: 'dedupe' },
@@ -512,15 +514,15 @@ example `'observe' | 'draft' | 'sandbox' | 'production'`).
 - **The trail is in memory and holds references.** It is not durable,
   immutable, or tamper-evident. Copy entries into storage you control. A
   hash-chained log such as
-  [`audit-chain-kit`](https://github.com/lkopietz3-byte/audit-chain-kit) adds
+  [`@evidencekit/audit-chain`](https://github.com/evidencekit/audit-chain) adds
   tamper evidence to the records you give it, with limits of its own: see
-  "Relationship to sibling kits" below.
+  "Relationship to sibling packages" below.
 - **It is not a sandbox.** It checks the report after the fact and cannot
   prevent an action.
 
-## Relationship to sibling kits
+## Relationship to sibling packages
 
-[`audit-chain-kit`](https://github.com/lkopietz3-byte/audit-chain-kit) is a
+[`@evidencekit/audit-chain`](https://github.com/evidencekit/audit-chain) is a
 hash-chained, append-only log of opaque entries. It does not know what a
 "receipt" or a "claim" is. A `RefutationEntry` (or a whole `ReceiptResult`) is
 a natural payload to append to it: `verifyReceipt` decides whether a claim

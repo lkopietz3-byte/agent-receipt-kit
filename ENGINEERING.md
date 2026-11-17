@@ -84,7 +84,7 @@ fix pass measured v8 coverage (100% on `src/`) and a Stryker mutation run (100%:
 301 killed, 0 survived). Those numbers were measured at 0.2.0 and have not been
 re-measured for 0.3.0. Neither tool is a dependency or a CI step: run them
 locally with
-`npm i -D --no-save @stryker-mutator/core @stryker-mutator/vitest-runner @vitest/coverage-v8@4.1.11`
+`npm i -D --no-save @stryker-mutator/core @stryker-mutator/vitest-runner @vitest/coverage-v8@4.1.12`
 and an uncommitted `stryker.config.json` (`testRunner: vitest`,
 `mutate: ["src/**/*.ts"]`, `coverageAnalysis: perTest`).
 

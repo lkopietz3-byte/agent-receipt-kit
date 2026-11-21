@@ -560,17 +560,17 @@ npm run verify
 package check that packs the library, installs the tarball into an empty
 project, and runs the consumer probes in `scripts/`. Code tour:
 
-- [`src/packet.ts`](src/packet.ts) issues the work packet.
-- [`src/receipt.ts`](src/receipt.ts) checks a claim against the packet and an
+- [`src/packet.ts`](https://github.com/lkopietz3-byte/agent-receipt-kit/blob/main/src/packet.ts) issues the work packet.
+- [`src/receipt.ts`](https://github.com/lkopietz3-byte/agent-receipt-kit/blob/main/src/receipt.ts) checks a claim against the packet and an
   optional observation.
-- [`src/trail.ts`](src/trail.ts) keeps rejected claims instead of dropping
+- [`src/trail.ts`](https://github.com/lkopietz3-byte/agent-receipt-kit/blob/main/src/trail.ts) keeps rejected claims instead of dropping
   them.
-- [`test/`](test/) covers accepted, unauthorized, dropped-evidence,
+- [`test/`](https://github.com/lkopietz3-byte/agent-receipt-kit/tree/main/test) covers accepted, unauthorized, dropped-evidence,
   mismatched-packet, and contradictory claims, fact comparison rules and
   circular or deep input, input checks, coverage, the `requireCoverage`
   option, and the reason text.
 
-See [`ENGINEERING.md`](ENGINEERING.md) for the invariants and release notes
+See [`ENGINEERING.md`](https://github.com/lkopietz3-byte/agent-receipt-kit/blob/main/ENGINEERING.md) for the invariants and release notes
 and [`CHANGELOG.md`](CHANGELOG.md) for changes.
 
 ## License
